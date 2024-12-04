@@ -273,10 +273,10 @@ JNIEXPORT void JNICALL Java_game_Game_init(JNIEnv *env, jobject obj) {
     jclass entity_definitions_class = (*env)->FindClass(env, "game/EntityDefinitions");
 """
 
-    for entity_name, entity in mod_api["entities"].items():
-        output += "\n"
+    output += "\n"
 
-        output += f'    jfieldID {entity_name}_definition_fid = (*env)->GetStaticFieldID(env, entity_definitions_class, "{entity_name}", "Lgame/{entity_name};");\n'
+    for entity_name, entity in mod_api["entities"].items():
+        output += f'    jfieldID {entity_name}_definition_fid = (*env)->GetStaticFieldID(env, entity_definitions_class, "{entity_name}", "Lgame/{snake_to_pascal(entity_name)};");\n'
 
         output += "\n"
 
@@ -296,7 +296,7 @@ JNIEXPORT void JNICALL Java_game_Game_init(JNIEnv *env, jobject obj) {
             field_name = field["name"]
             field_type = field["type"]
 
-            output += f'    {entity_name}_definition_{field_name}_fid = (*env)->GetFieldID(env, {entity_name}_definition_class, "{field_name}", "'
+            output += f'    {entity_name}_definition_{field_name}_fid = (*env)->GetFieldID(env, {entity_name}_definition_class, "{snake_to_camel(field_name)}", "'
 
             output += get_signature_type(field_type)
 
@@ -304,8 +304,11 @@ JNIEXPORT void JNICALL Java_game_Game_init(JNIEnv *env, jobject obj) {
 
             output += "\n"
 
-    for fn_name, fn in mod_api["game_functions"].items():
-        output += f'    game_fn_{fn_name}_id = (*env)->GetMethodID(env, javaClass, "gameFn_{fn_name}", "('
+    for fn_index, (fn_name, fn) in enumerate(mod_api["game_functions"].items()):
+        if fn_index > 0:
+            output += "\n"
+
+        output += f'    game_fn_{fn_name}_id = (*env)->GetMethodID(env, javaClass, "gameFn_{snake_to_camel(fn_name)}", "('
 
         for argument in fn["arguments"]:
             output += get_signature_type(argument["type"])
@@ -315,8 +318,6 @@ JNIEXPORT void JNICALL Java_game_Game_init(JNIEnv *env, jobject obj) {
         output += get_signature_type(fn["return_type"]) if "return_type" in fn else "V"
 
         output += '");\n'
-
-        output += "\n"
 
     output += "}\n"
 
@@ -428,7 +429,7 @@ JNIEXPORT jboolean JNICALL Java_game_Game_areOnFnsInSafeMode(JNIEnv *env, jobjec
             continue
 
         for on_fn_name, on_fn in entity["on_functions"].items():
-            output += f"JNIEXPORT jboolean JNICALL Java_game_Game_{entity_name}_1has{on_fn_name}(JNIEnv *env, jobject obj, jlong on_fns) {{\n"
+            output += f"JNIEXPORT jboolean JNICALL Java_game_Game_{entity_name}_1has_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jobject obj, jlong on_fns) {{\n"
 
             output += """    (void)env;
     (void)obj;
@@ -440,7 +441,7 @@ JNIEXPORT jboolean JNICALL Java_game_Game_areOnFnsInSafeMode(JNIEnv *env, jobjec
 
             output += "\n"
 
-            output += f"JNIEXPORT void JNICALL Java_game_Game_{entity_name}_1{on_fn_name}(JNIEnv *env, jobject obj, jlong on_fns, jbyteArray globals) {{\n"
+            output += f"JNIEXPORT void JNICALL Java_game_Game_{entity_name}_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jobject obj, jlong on_fns, jbyteArray globals) {{\n"
 
             output += """    (void)obj;
 
@@ -454,6 +455,17 @@ JNIEXPORT jboolean JNICALL Java_game_Game_areOnFnsInSafeMode(JNIEnv *env, jobjec
             output += "}\n"
 
     return output
+
+
+# Converts snake_case to camelCase
+# Source: https://stackoverflow.com/a/70999330/13279557
+def snake_to_camel(s):
+    return s[0] + s.title().replace("_", "")[1:]
+
+
+# Converts snake_case to PascalCase
+def snake_to_pascal(s):
+    return s.title().replace("_", "")
 
 
 # From the "Type Signatures" header here:
