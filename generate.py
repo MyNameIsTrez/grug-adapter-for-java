@@ -56,8 +56,8 @@ jmethodID runtime_error_handler_id;
 
     output += "\n"
 
-    for name, entity in mod_api["entities"].items():
-        output += f"void game_fn_define_{name}("
+    for entity_name, entity in mod_api["entities"].items():
+        output += f"void game_fn_define_{entity_name}("
 
         for field_index, field in enumerate(entity["fields"]):
             if field_index > 0:
@@ -66,6 +66,21 @@ jmethodID runtime_error_handler_id;
             output += f"{field["type"]} c_{field["name"]}"
 
         output += ") {\n"
+
+        for field_index, field in enumerate(entity["fields"]):
+            field_name = field["name"]
+
+            if field_index > 0:
+                output += "\n"
+
+            if field["type"] == "string":
+                output += f"    jstring {field_name} = (*global_env)->NewStringUTF(global_env, c_{field_name});\n"
+                output += f"    (*global_env)->SetObjectField(global_env, {entity_name}_definition_obj, {entity_name}_definition_{field_name}_fid, {field_name});\n"
+            elif field["type"] == "i32":
+                output += f"    (*global_env)->SetIntField(global_env, {entity_name}_definition_obj, {entity_name}_definition_{field_name}_fid, c_{field_name});\n"
+            else:
+                # TODO: Support more types
+                assert False
 
         output += "}\n"
 
@@ -252,16 +267,56 @@ JNIEXPORT void JNICALL Java_game_Game_init(JNIEnv *env, jobject obj) {
     global_obj = obj;
 
     jclass javaClass = (*env)->GetObjectClass(env, obj);
-    assert(javaClass);
 
     runtime_error_handler_id = (*env)->GetMethodID(env, javaClass, "runtimeErrorHandler", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V");
-    assert(runtime_error_handler_id);
 
     jclass entity_definitions_class = (*env)->FindClass(env, "game/EntityDefinitions");
-    assert(entity_definitions_class);
 """
 
-    # TODO: Add the rest of Java_game_Game_init()
+    for entity_name, entity in mod_api["entities"].items():
+        output += "\n"
+
+        output += f'    jfieldID {entity_name}_definition_fid = (*env)->GetStaticFieldID(env, entity_definitions_class, "{entity_name}", "Lgame/{entity_name};");\n'
+
+        output += "\n"
+
+        output += f"    {entity_name}_definition_obj = (*env)->GetStaticObjectField(env, entity_definitions_class, {entity_name}_definition_fid);\n"
+
+        output += "\n"
+
+        output += f"    {entity_name}_definition_obj = (*env)->NewGlobalRef(env, {entity_name}_definition_obj);\n"
+
+        output += "\n"
+
+        output += f"    jclass {entity_name}_definition_class = (*env)->GetObjectClass(env, {entity_name}_definition_obj);\n"
+
+        output += "\n"
+
+        for field in entity["fields"]:
+            field_name = field["name"]
+            field_type = field["type"]
+
+            output += f'    {entity_name}_definition_{field_name}_fid = (*env)->GetFieldID(env, {entity_name}_definition_class, "{field_name}", "'
+
+            output += get_signature_type(field_type)
+
+            output += '");\n'
+
+            output += "\n"
+
+    for fn_name, fn in mod_api["game_functions"].items():
+        output += f'    game_fn_{fn_name}_id = (*env)->GetMethodID(env, javaClass, "gameFn_{fn_name}", "('
+
+        for argument in fn["arguments"]:
+            output += get_signature_type(argument["type"])
+
+        output += ")"
+
+        output += get_signature_type(fn["return_type"]) if "return_type" in fn else "V"
+
+        output += '");\n'
+
+        output += "\n"
 
     output += "}\n"
 
@@ -368,7 +423,49 @@ JNIEXPORT jboolean JNICALL Java_game_Game_areOnFnsInSafeMode(JNIEnv *env, jobjec
 
     output += "\n"
 
+    for entity_name, entity in mod_api["entities"].items():
+        if "on_functions" not in entity:
+            continue
+
+        for on_fn_name, on_fn in entity["on_functions"].items():
+            output += f"JNIEXPORT jboolean JNICALL Java_game_Game_{entity_name}_1has{on_fn_name}(JNIEnv *env, jobject obj, jlong on_fns) {{\n"
+
+            output += """    (void)env;
+    (void)obj;
+
+    return ((struct tool_on_fns *)on_fns)->on_use != NULL;
+"""
+
+            output += "}\n"
+
+            output += "\n"
+
+            output += f"JNIEXPORT void JNICALL Java_game_Game_{entity_name}_1{on_fn_name}(JNIEnv *env, jobject obj, jlong on_fns, jbyteArray globals) {{\n"
+
+            output += """    (void)obj;
+
+    jbyte *globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
+
+    ((struct tool_on_fns *)on_fns)->on_use(globals_bytes);
+
+    (*env)->ReleaseByteArrayElements(env, globals, globals_bytes, 0);
+"""
+
+            output += "}\n"
+
     return output
+
+
+# From the "Type Signatures" header here:
+# https://docs.oracle.com/javase/8/docs/technotes/guides/jni/spec/types.html
+def get_signature_type(typ):
+    if typ == "i32" or typ == "id":
+        return "I"
+    elif typ == "string":
+        return "Ljava/lang/String;"
+
+    # TODO: Support more types
+    assert False
 
 
 def main(mod_api_path, output_path):
