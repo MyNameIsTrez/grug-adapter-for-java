@@ -3,21 +3,18 @@ import sys
 
 
 def get_output(mod_api):
-    output = ""
+    output = """#include "headers/game_Game.h"
 
-    output += '#include "headers/game_Game.h"\n'
-    output += "\n"
-    output += '#include "grug/grug.h"\n'
-    output += "\n"
-    output += "#include <assert.h>\n"
-    output += "#include <stdbool.h>\n"
-    output += "#include <stdio.h>\n"
+#include "grug/grug.h"
 
-    output += "\n"
+#include <assert.h>
+#include <stdbool.h>
+#include <stdio.h>
 
-    output += "typedef char* string;\n"
-    output += "typedef int32_t i32;\n"
-    output += "typedef uint64_t id;\n"
+typedef char* string;
+typedef int32_t i32;
+typedef uint64_t id;
+"""
 
     output += "\n"
 
@@ -37,14 +34,12 @@ def get_output(mod_api):
 
         output += "};\n"
 
-        output += "\n"
+    output += """
+JNIEnv *global_env;
+jobject global_obj;
 
-    output += "JNIEnv *global_env;\n"
-    output += "jobject global_obj;\n"
-
-    output += "\n"
-
-    output += "jmethodID runtime_error_handler_id;\n"
+jmethodID runtime_error_handler_id;
+"""
 
     output += "\n"
 
@@ -76,10 +71,7 @@ def get_output(mod_api):
 
         output += "\n"
 
-    for i, (fn_name, fn) in enumerate(mod_api["game_functions"].items()):
-        if i > 0:
-            output += "\n"
-
+    for fn_name, fn in mod_api["game_functions"].items():
         output += fn["return_type"] if "return_type" in fn else "void"
 
         output += f" game_fn_{fn_name}("
@@ -116,8 +108,9 @@ def get_output(mod_api):
 
         output += "}\n"
 
-    output += """
-void runtime_error_handler(char *reason, enum grug_runtime_error_type type, char *on_fn_name, char *on_fn_path) {
+        output += "\n"
+
+    output += """void runtime_error_handler(char *reason, enum grug_runtime_error_type type, char *on_fn_name, char *on_fn_path) {
     jstring java_reason = (*global_env)->NewStringUTF(global_env, reason);
     jint java_type = type;
     jstring java_on_fn_name = (*global_env)->NewStringUTF(global_env, on_fn_name);
@@ -253,236 +246,127 @@ JNIEXPORT void JNICALL Java_game_Game_callInitGlobals(JNIEnv *env, jobject obj, 
 
     (*env)->ReleaseByteArrayElements(env, globals, globals_bytes, 0);
 }
+
+JNIEXPORT void JNICALL Java_game_Game_init(JNIEnv *env, jobject obj) {
+    global_env = env;
+    global_obj = obj;
+
+    jclass javaClass = (*env)->GetObjectClass(env, obj);
+    assert(javaClass);
+
+    runtime_error_handler_id = (*env)->GetMethodID(env, javaClass, "runtimeErrorHandler", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V");
+    assert(runtime_error_handler_id);
+
+    jclass entity_definitions_class = (*env)->FindClass(env, "game/EntityDefinitions");
+    assert(entity_definitions_class);
+"""
+
+    # TODO: Add the rest of Java_game_Game_init()
+
+    output += "}\n"
+
+    output += """
+JNIEXPORT void JNICALL Java_game_Game_fillRootGrugDir(JNIEnv *env, jobject obj, jobject dir_object) {
+    (void)obj;
+
+    jclass dir_class = (*env)->GetObjectClass(env, dir_object);
+
+    jfieldID name_fid = (*env)->GetFieldID(env, dir_class, "name", "Ljava/lang/String;");
+    jstring name = (*env)->NewStringUTF(env, grug_mods.name);
+    (*env)->SetObjectField(env, dir_object, name_fid, name);
+
+    jfieldID dirs_size_fid = (*env)->GetFieldID(env, dir_class, "dirsSize", "I");
+    (*env)->SetIntField(env, dir_object, dirs_size_fid, (jint)grug_mods.dirs_size);
+
+    jfieldID files_size_fid = (*env)->GetFieldID(env, dir_class, "filesSize", "I");
+    (*env)->SetIntField(env, dir_object, files_size_fid, (jint)grug_mods.files_size);
+
+    jfieldID address_fid = (*env)->GetFieldID(env, dir_class, "address", "J");
+    (*env)->SetLongField(env, dir_object, address_fid, (jlong)&grug_mods);
+}
+
+JNIEXPORT void JNICALL Java_game_Game_fillGrugDir(JNIEnv *env, jobject obj, jobject dir_object, jlong parent_dir_address, jint dir_index) {
+    (void)obj;
+
+    jclass dir_class = (*env)->GetObjectClass(env, dir_object);
+
+    struct grug_mod_dir *parent_dir = (struct grug_mod_dir *)parent_dir_address;
+
+    struct grug_mod_dir dir = parent_dir->dirs[dir_index];
+
+    jfieldID name_fid = (*env)->GetFieldID(env, dir_class, "name", "Ljava/lang/String;");
+    jstring name = (*env)->NewStringUTF(env, dir.name);
+    (*env)->SetObjectField(env, dir_object, name_fid, name);
+
+    jfieldID dirs_size_fid = (*env)->GetFieldID(env, dir_class, "dirsSize", "I");
+    (*env)->SetIntField(env, dir_object, dirs_size_fid, (jint)dir.dirs_size);
+
+    jfieldID files_size_fid = (*env)->GetFieldID(env, dir_class, "filesSize", "I");
+    (*env)->SetIntField(env, dir_object, files_size_fid, (jint)dir.files_size);
+
+    jfieldID address_fid = (*env)->GetFieldID(env, dir_class, "address", "J");
+    (*env)->SetLongField(env, dir_object, address_fid, (jlong)&parent_dir->dirs[dir_index]);
+}
+
+JNIEXPORT void JNICALL Java_game_Game_fillGrugFile(JNIEnv *env, jobject obj, jobject file_object, jlong parent_dir_address, jint file_index) {
+    (void)obj;
+
+    jclass file_class = (*env)->GetObjectClass(env, file_object);
+
+    struct grug_mod_dir *parent_dir = (struct grug_mod_dir *)parent_dir_address;
+
+    struct grug_file file = parent_dir->files[file_index];
+
+    jfieldID name_fid = (*env)->GetFieldID(env, file_class, "name", "Ljava/lang/String;");
+    jstring name = (*env)->NewStringUTF(env, file.name);
+    (*env)->SetObjectField(env, file_object, name_fid, name);
+
+    jfieldID dll_fid = (*env)->GetFieldID(env, file_class, "dll", "J");
+    (*env)->SetLongField(env, file_object, dll_fid, (jlong)file.dll);
+
+    jfieldID define_fn_fid = (*env)->GetFieldID(env, file_class, "defineFn", "J");
+    (*env)->SetLongField(env, file_object, define_fn_fid, (jlong)file.define_fn);
+
+    jfieldID globals_size_fid = (*env)->GetFieldID(env, file_class, "globalsSize", "I");
+    (*env)->SetIntField(env, file_object, globals_size_fid, (jint)file.globals_size);
+
+    jfieldID init_globals_fn_fid = (*env)->GetFieldID(env, file_class, "initGlobalsFn", "J");
+    (*env)->SetLongField(env, file_object, init_globals_fn_fid, (jlong)file.init_globals_fn);
+
+    jfieldID define_type_fid = (*env)->GetFieldID(env, file_class, "defineType", "Ljava/lang/String;");
+    jstring define_type = (*env)->NewStringUTF(env, file.define_type);
+    (*env)->SetObjectField(env, file_object, define_type_fid, define_type);
+
+    jfieldID on_fns_fid = (*env)->GetFieldID(env, file_class, "onFns", "J");
+    (*env)->SetLongField(env, file_object, on_fns_fid, (jlong)file.on_fns);
+
+    jfieldID resource_mtimes_fid = (*env)->GetFieldID(env, file_class, "resourceMtimes", "J");
+    (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)file.resource_mtimes);
+}
+
+JNIEXPORT void JNICALL Java_game_Game_callDefineFn(JNIEnv *env, jobject obj, jlong define_fn) {
+    (void)env;
+    (void)obj;
+
+    ((grug_define_fn_t)define_fn)();
+}
+
+JNIEXPORT void JNICALL Java_game_Game_toggleOnFnsMode(JNIEnv *env, jobject obj) {
+    (void)env;
+    (void)obj;
+
+    grug_toggle_on_fns_mode();
+}
+
+JNIEXPORT jboolean JNICALL Java_game_Game_areOnFnsInSafeMode(JNIEnv *env, jobject obj) {
+    (void)env;
+    (void)obj;
+
+    return grug_are_on_fns_in_safe_mode();
+}
 """
 
     output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-    output += "\n"
-
-    pass
-    pass
-    pass
-    pass
-    pass
-
-    for entity in mod_api["entities"].keys():
-        output += f"static PyObject *game_fn_define_{entity}_handle;\n"
-
-    for fn in mod_api["game_functions"].keys():
-        output += f"static PyObject *game_fn_{fn}_handle;\n"
-
-    output += "\n"
-
-    output += "#define CHECK_PYTHON_ERROR() {\\\n"
-    output += "    if (PyErr_Occurred()) {\\\n"
-    output += "        PyErr_Print();\\\n"
-    output += (
-        '        fprintf(stderr, "Error detected in adapter.c:%d\\n", __LINE__);\\\n'
-    )
-    output += "        exit(EXIT_FAILURE);\\\n"
-    output += "    }\\\n"
-    output += "}\n"
-
-    output += "\n"
-
-    output += "void init(void) {\n"
-
-    output += '    PyObject *modules = PySys_GetObject("modules");\n'
-    output += "    CHECK_PYTHON_ERROR();\n"
-    output += "    assert(modules);\n"
-
-    output += "\n"
-
-    output += '    main_module = PyDict_GetItemString(modules, "__main__");\n'
-    output += "    CHECK_PYTHON_ERROR();\n"
-    output += "    assert(main_module);\n"
-
-    output += "\n"
-
-    for entity in mod_api["entities"].keys():
-        output += f'    game_fn_define_{entity}_handle = PyObject_GetAttrString(main_module, "game_fn_define_{entity}");\n'
-        output += f"    CHECK_PYTHON_ERROR();\n"
-        output += f"    assert(game_fn_define_{entity}_handle);\n"
-        output += "\n"
-
-    for i, fn in enumerate(mod_api["game_functions"].keys()):
-        output += f'    game_fn_{fn}_handle = PyObject_GetAttrString(main_module, "game_fn_{fn}");\n'
-        output += f"    CHECK_PYTHON_ERROR();\n"
-        output += f"    assert(game_fn_{fn}_handle);\n"
-
-        if i < len(mod_api["game_functions"].keys()) - 1:
-            output += "\n"
-
-    output += "}\n"
-
-    output += "\n"
-
-    for name, entity in mod_api["entities"].items():
-        output += f"void game_fn_define_{name}("
-
-        for i, field in enumerate(entity["fields"]):
-            if i > 0:
-                output += ", "
-
-            output += field["type"]
-            output += " "
-            output += field["name"]
-
-        output += ") {\n"
-
-        arg_count = len(entity["fields"])
-
-        if arg_count > 0:
-            for field_index, field in enumerate(entity["fields"]):
-                output += f"    PyObject *arg{field_index + 1} = "
-
-                typ = field["type"]
-
-                # TODO: Test all these!
-                if typ == "bool" or typ == "i32":
-                    output += "PyLong_FromLong"
-                elif typ == "id":
-                    output += "PyLong_FromUnsignedLongLong"
-                elif typ == "f32":
-                    output += "PyFloat_FromDouble"
-                elif typ == "string" or typ == "resource" or typ == "entity":
-                    output += "PyUnicode_FromString"
-
-                output += "("
-                output += field["name"]
-                output += ");\n"
-
-                output += "    CHECK_PYTHON_ERROR();\n"
-                output += f"    assert(arg{field_index + 1});\n"
-
-            output += "\n"
-
-            output += f"    PyObject *args = PyTuple_Pack({arg_count}"
-
-            for field_index in range(arg_count):
-                output += f", arg{field_index + 1}"
-
-            output += ");\n"
-
-            output += "    CHECK_PYTHON_ERROR();\n"
-            output += "    assert(args);\n"
-
-            output += "\n"
-
-        output += (
-            f"    PyObject *result = PyObject_CallObject(game_fn_define_{name}_handle, "
-        )
-        output += "args" if arg_count > 0 else "NULL"
-        output += ");\n"
-        output += "    CHECK_PYTHON_ERROR();\n"
-        output += "    assert(result);\n"
-
-        output += "}\n"
-
-        output += "\n"
-
-    for i, (name, fn) in enumerate(mod_api["game_functions"].items()):
-        output += fn.get("return_type", "void")
-
-        output += f" game_fn_{name}("
-
-        for arg_index, arg in enumerate(fn["arguments"]):
-            if arg_index > 0:
-                output += ", "
-
-            output += arg["type"]
-            output += " "
-            output += arg["name"]
-
-        output += ") {\n"
-
-        arg_count = len(fn["arguments"])
-
-        if arg_count > 0:
-            for arg_index, arg in enumerate(fn["arguments"]):
-                output += f"    PyObject *arg{arg_index + 1} = "
-
-                typ = arg["type"]
-
-                # TODO: Test all these!
-                if typ == "bool" or typ == "i32":
-                    output += "PyLong_FromLong"
-                elif typ == "id":
-                    output += "PyLong_FromUnsignedLongLong"
-                elif typ == "f32":
-                    output += "PyFloat_FromDouble"
-                elif typ == "string" or typ == "resource" or typ == "entity":
-                    output += "PyUnicode_FromString"
-
-                output += "("
-                output += arg["name"]
-                output += ");\n"
-
-                output += "    CHECK_PYTHON_ERROR();\n"
-                output += f"    assert(arg{arg_index + 1});\n"
-
-            output += "\n"
-
-            output += f"    PyObject *args = PyTuple_Pack({arg_count}"
-
-            for arg_index in range(arg_count):
-                output += f", arg{arg_index + 1}"
-
-            output += ");\n"
-
-            output += "    CHECK_PYTHON_ERROR();\n"
-            output += "    assert(args);\n"
-
-            output += "\n"
-
-        output += f"    PyObject *result = PyObject_CallObject(game_fn_{name}_handle, "
-        output += "args" if arg_count > 0 else "NULL"
-        output += ");\n"
-        output += "    CHECK_PYTHON_ERROR();\n"
-        output += "    assert(result);\n"
-
-        if "return_type" in fn:
-            return_type = fn["return_type"]
-
-            output += "\n"
-
-            # TODO: Test all these!
-            if return_type == "bool" or return_type == "i32":
-                output += "    return PyLong_AsLong(result);\n"
-            elif return_type == "id":
-                output += "    return PyLong_AsUnsignedLongLong(result);\n"
-            elif return_type == "f32":
-                output += "    return PyFloat_AsDouble(result);\n"
-            elif (
-                return_type == "string"
-                or return_type == "resource"
-                or return_type == "entity"
-            ):
-                output += "    return PyUnicode_AsUTF8(result);\n"
-
-        output += "}\n"
-
-        if i < len(mod_api["game_functions"].keys()) - 1:
-            output += "\n"
 
     return output
 
