@@ -3,7 +3,7 @@ import sys
 
 
 def get_output(mod_api):
-    output = """#include "headers/game_Game.h"
+    output = """#include <jni.h>
 
 #include "grug/grug.h"
 
@@ -288,9 +288,10 @@ JNIEXPORT void JNICALL Java_game_Game_init(JNIEnv *env, jobject obj) {
 
         output += "\n"
 
-        output += f"    jclass {entity_name}_definition_class = (*env)->GetObjectClass(env, {entity_name}_definition_obj);\n"
+        if len(entity["fields"]) > 0:
+            output += f"    jclass {entity_name}_definition_class = (*env)->GetObjectClass(env, {entity_name}_definition_obj);\n"
 
-        output += "\n"
+            output += "\n"
 
         for field in entity["fields"]:
             field_name = field["name"]
@@ -431,10 +432,10 @@ JNIEXPORT jboolean JNICALL Java_game_Game_areOnFnsInSafeMode(JNIEnv *env, jobjec
         for on_fn_name, on_fn in entity["on_functions"].items():
             output += f"JNIEXPORT jboolean JNICALL Java_game_Game_{entity_name}_1has_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jobject obj, jlong on_fns) {{\n"
 
-            output += """    (void)env;
+            output += f"""    (void)env;
     (void)obj;
 
-    return ((struct tool_on_fns *)on_fns)->on_use != NULL;
+    return ((struct {entity_name}_on_fns *)on_fns)->{on_fn_name} != NULL;
 """
 
             output += "}\n"
@@ -443,11 +444,11 @@ JNIEXPORT jboolean JNICALL Java_game_Game_areOnFnsInSafeMode(JNIEnv *env, jobjec
 
             output += f"JNIEXPORT void JNICALL Java_game_Game_{entity_name}_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jobject obj, jlong on_fns, jbyteArray globals) {{\n"
 
-            output += """    (void)obj;
+            output += f"""    (void)obj;
 
     jbyte *globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
 
-    ((struct tool_on_fns *)on_fns)->on_use(globals_bytes);
+    ((struct {entity_name}_on_fns *)on_fns)->{on_fn_name}(globals_bytes);
 
     (*env)->ReleaseByteArrayElements(env, globals, globals_bytes, 0);
 """
