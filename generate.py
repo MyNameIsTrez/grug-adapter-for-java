@@ -151,13 +151,6 @@ jmethodID runtime_error_handler_id;
     (*global_env)->CallVoidMethod(global_env, global_obj, runtime_error_handler_id, java_reason, java_type, java_on_fn_name, java_on_fn_path);
 }}
 
-JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_grugSetRuntimeErrorHandler(JNIEnv *env, jobject obj) {{
-    (void)env;
-    (void)obj;
-
-    grug_set_runtime_error_handler(runtime_error_handler);
-}}
-
 JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_errorHasChanged(JNIEnv *env, jobject obj) {{
     (void)env;
     (void)obj;
@@ -205,6 +198,23 @@ JNIEXPORT jint JNICALL Java_{package_underscore}_{grug_class}_errorGrugCLineNumb
     (void)obj;
 
     return grug_error.grug_c_line_number;
+}}
+
+JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_grugInit(JNIEnv *env, jobject obj, jstring java_mod_api_json_path, jstring java_mods_dir_path) {{
+    (void)obj;
+
+    const char *c_mod_api_json_path = (*env)->GetStringUTFChars(env, java_mod_api_json_path, NULL);
+    ASSERT_JNI(c_mod_api_json_path, env);
+
+    const char *c_mods_dir_path = (*env)->GetStringUTFChars(env, java_mods_dir_path, NULL);
+    ASSERT_JNI(c_mods_dir_path, env);
+
+    bool result = grug_init(runtime_error_handler, (char *)c_mod_api_json_path, (char *)c_mods_dir_path);
+
+    (*env)->ReleaseStringUTFChars(env, java_mod_api_json_path, c_mod_api_json_path);
+    (*env)->ReleaseStringUTFChars(env, java_mods_dir_path, c_mods_dir_path);
+
+    return result;
 }}
 
 JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_grugRegenerateModifiedMods(JNIEnv *env, jobject obj) {{
@@ -294,7 +304,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_callInitGlobals(JN
     (*env)->ReleaseByteArrayElements(env, globals, globals_bytes, 0);
 }}
 
-JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_init(JNIEnv *env, jobject obj) {{
+JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JNIEnv *env, jobject obj) {{
     global_env = env;
     global_obj = obj;
 
