@@ -499,10 +499,10 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_areOnFnsInSafe
             continue
 
         for on_fn_name, on_fn in entity["on_functions"].items():
-            output += f"JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_{snake_to_camel(entity_name)}_1has_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jclass clazz, jlong on_fns) {{\n"
+            output += f"JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_{snake_to_camel(entity_name)}_1has_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jobject obj, jlong on_fns) {{\n"
 
             output += f"""    (void)env;
-    (void)clazz;
+    (void)obj;
 
     return ((struct {entity_name}_on_fns *)on_fns)->{on_fn_name} != NULL;
 """
@@ -511,9 +511,10 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_areOnFnsInSafe
 
             output += "\n"
 
-            output += f"JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{snake_to_camel(entity_name)}_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jclass clazz, jlong on_fns, jbyteArray globals) {{\n"
+            output += f"JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{snake_to_camel(entity_name)}_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jobject obj, jlong on_fns, jbyteArray globals) {{\n"
 
-            output += f"""    (void)clazz;
+            output += f"""    global_env = env;
+    global_obj = obj;
 
     jbyte *globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
     ASSERT_JNI(globals_bytes, env);
