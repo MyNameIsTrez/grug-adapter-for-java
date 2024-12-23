@@ -113,7 +113,7 @@ jmethodID runtime_error_handler_id;
 
             if argument["type"] == "string":
                 output += "c_"
-            elif argument["type"] == "i32":
+            elif argument["type"] == "i32" or argument["type"] == "id":
                 output += "java_"
             else:
                 # TODO: Support more types
@@ -132,7 +132,7 @@ jmethodID runtime_error_handler_id;
             if argument["type"] == "string":
                 output += f"    jstring java_{argument_name} = (*global_env)->NewStringUTF(global_env, c_{argument_name});\n"
                 output += f"    ASSERT_JNI(java_{argument_name}, global_env);\n"
-            elif field["type"] == "i32":
+            elif argument["type"] == "i32" or argument["type"] == "id":
                 pass
             else:
                 # TODO: Support more types
@@ -345,7 +345,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
     output += "\n"
 
     for entity_name, entity in mod_api["entities"].items():
-        output += f'    jfieldID {entity_name}_definition_fid = (*env)->GetStaticFieldID(env, entity_definitions_class, "{snake_to_camel(entity_name)}", "L{package_slash}/{snake_to_pascal(entity_name)};");\n'
+        output += f'    jfieldID {entity_name}_definition_fid = (*env)->GetStaticFieldID(env, entity_definitions_class, "{snake_to_camel(entity_name)}", "L{package_slash}/Grug{snake_to_pascal(entity_name)};");\n'
         output += f'    ASSERT_JNI({entity_name}_definition_fid, env);\n'
 
         output += "\n"
