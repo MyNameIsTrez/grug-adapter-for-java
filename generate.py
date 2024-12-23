@@ -109,9 +109,34 @@ jmethodID runtime_error_handler_id;
             if argument_index > 0:
                 output += ", "
 
-            output += f"{argument["type"]} {argument["name"]}"
+            output += f"{argument["type"]} "
+
+            if argument["type"] == "string":
+                output += "c_"
+            elif argument["type"] == "i32":
+                output += "java_"
+            else:
+                # TODO: Support more types
+                assert False
+
+            output += f"{argument["name"]}"
 
         output += ") {\n"
+
+        for argument_index, argument in enumerate(fn["arguments"]):
+            argument_name = argument["name"]
+
+            if argument_index > 0:
+                output += "\n"
+
+            if argument["type"] == "string":
+                output += f"    jstring java_{argument_name} = (*global_env)->NewStringUTF(global_env, c_{argument_name});\n"
+                output += f"    ASSERT_JNI(java_{argument_name}, global_env);\n"
+            elif field["type"] == "i32":
+                pass
+            else:
+                # TODO: Support more types
+                assert False
 
         output += "    "
 
@@ -131,7 +156,7 @@ jmethodID runtime_error_handler_id;
         output += f"Method(global_env, global_obj, game_fn_{fn_name}_id"
 
         for argument_index, argument in enumerate(fn["arguments"]):
-            output += f", {argument["name"]}"
+            output += f", java_{argument["name"]}"
 
         output += ");\n"
 
