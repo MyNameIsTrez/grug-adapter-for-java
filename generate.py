@@ -147,8 +147,10 @@ jmethodID runtime_error_handler_id;
 
         if "return_type" not in fn:
             output += "Void"
-        elif fn["return_type"] == "id":
+        elif fn["return_type"] == "i32":
             output += "Int"
+        elif fn["return_type"] == "id":
+            output += "Long"
         else:
             # TODO: Support more types
             assert False
@@ -568,8 +570,10 @@ def snake_to_pascal(s):
 # From the "Type Signatures" header here:
 # https://docs.oracle.com/javase/8/docs/technotes/guides/jni/spec/types.html
 def get_signature_type(typ):
-    if typ == "i32" or typ == "id":
+    if typ == "i32":
         return "I"
+    elif typ == "id":
+        return "J"
     elif typ == "string":
         return "Ljava/lang/String;"
 
