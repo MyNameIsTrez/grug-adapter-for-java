@@ -193,31 +193,27 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_loadingErrorIn
 }}
 
 JNIEXPORT jstring JNICALL Java_{package_underscore}_{grug_class}_errorMsg(JNIEnv *env, jobject obj) {{
-    (void)env;
     (void)obj;
 
-    return (*global_env)->NewStringUTF(global_env, grug_error.msg);
+    return (*env)->NewStringUTF(env, grug_error.msg);
 }}
 
 JNIEXPORT jstring JNICALL Java_{package_underscore}_{grug_class}_errorPath(JNIEnv *env, jobject obj) {{
-    (void)env;
     (void)obj;
 
-    return (*global_env)->NewStringUTF(global_env, grug_error.path);
+    return (*env)->NewStringUTF(env, grug_error.path);
 }}
 
 JNIEXPORT jstring JNICALL Java_{package_underscore}_{grug_class}_onFnName(JNIEnv *env, jobject obj) {{
-    (void)env;
     (void)obj;
 
-    return (*global_env)->NewStringUTF(global_env, grug_on_fn_name);
+    return (*env)->NewStringUTF(env, grug_on_fn_name);
 }}
 
 JNIEXPORT jstring JNICALL Java_{package_underscore}_{grug_class}_onFnPath(JNIEnv *env, jobject obj) {{
-    (void)env;
     (void)obj;
 
-    return (*global_env)->NewStringUTF(global_env, grug_on_fn_path);
+    return (*env)->NewStringUTF(env, grug_on_fn_path);
 }}
 
 JNIEXPORT jint JNICALL Java_{package_underscore}_{grug_class}_errorGrugCLineNumber(JNIEnv *env, jobject obj) {{
