@@ -5,11 +5,15 @@ import sys
 def get_output(mod_api, package_slash, grug_class):
     package_underscore = package_slash.replace("/", "_")
 
-    output = """#include <jni.h>
+    output = """#define _GNU_SOURCE // TODO: REMOVE!
+
+#include <jni.h>
 
 #include "grug/grug.h"
 
 #include <assert.h>
+// #include <execinfo.h> // TODO: REMOVE!
+#include <pthread.h> // TODO: REMOVE!
 #include <stdbool.h>
 #include <stdio.h>
 
@@ -17,16 +21,29 @@ typedef char* string;
 typedef int32_t i32;
 typedef uint64_t id;
 
-#ifdef DONT_ASSERT_JNI
-#define ASSERT_JNI(obj, env)
+#ifdef DONT_CHECK_EXCEPTIONS
+#define CHECK(env)
 #else
-#define ASSERT_JNI(obj, env) {\\
-    if (obj == NULL) {\\
+#define CHECK(env) {\\
+    if ((*env)->ExceptionCheck(env)) {\\
+        fprintf(stderr, "Exception detected at %s:%d\\n", __FILE__, __LINE__);\\
         (*env)->ExceptionDescribe(env);\\
         exit(EXIT_FAILURE);\\
     }\\
 }
 #endif
+
+// > Do not save instances of JNIEnv* unless you are sure they will be referenced in the same thread.
+// From https://stackoverflow.com/a/23963070/13279557
+// > The main takeaway from this is "don't cache JNIEnv".
+// From https://stackoverflow.com/a/16843011/13279557
+#define FILL_ENV(env) {\\
+    jint result = (*jvm)->GetEnv(jvm, (void**)&env, jni_version);\\
+    if (result != JNI_OK) {\\
+        fprintf(stderr, "GetEnv failed with result %d in %s:%d\\n", result, __FILE__, __LINE__);\\
+        exit(EXIT_FAILURE);\\
+    }\\
+}
 """
 
     output += "\n"
@@ -48,7 +65,12 @@ typedef uint64_t id;
         output += "};\n"
 
     output += """
-JNIEnv *global_env;
+jint jni_version;
+JavaVM* jvm;
+
+pid_t on_fn_tid;
+
+// TODO: Get rid of this!
 jobject global_obj;
 
 jmethodID runtime_error_handler_id;
@@ -78,7 +100,11 @@ jmethodID runtime_error_handler_id;
 
             output += f"{field["type"]} c_{field["name"]}"
 
-        output += ") {\n"
+        output += f""") {{
+    JNIEnv *env;
+    FILL_ENV(env);
+
+"""
 
         for field_index, field in enumerate(entity["fields"]):
             field_name = field["name"]
@@ -87,11 +113,11 @@ jmethodID runtime_error_handler_id;
                 output += "\n"
 
             if field["type"] == "string":
-                output += f"    jstring {field_name} = (*global_env)->NewStringUTF(global_env, c_{field_name});\n"
-                output += f"    ASSERT_JNI({field_name}, global_env);\n"
-                output += f"    (*global_env)->SetObjectField(global_env, {entity_name}_definition_obj, {entity_name}_definition_{field_name}_fid, {field_name});\n"
+                output += f"    jstring {field_name} = (*env)->NewStringUTF(env, c_{field_name});\n"
+                output += f"    CHECK(env);\n"
+                output += f"    (*env)->SetObjectField(env, {entity_name}_definition_obj, {entity_name}_definition_{field_name}_fid, {field_name});\n"
             elif field["type"] == "i32":
-                output += f"    (*global_env)->SetIntField(global_env, {entity_name}_definition_obj, {entity_name}_definition_{field_name}_fid, c_{field_name});\n"
+                output += f"    (*env)->SetIntField(env, {entity_name}_definition_obj, {entity_name}_definition_{field_name}_fid, c_{field_name});\n"
             else:
                 # TODO: Support more types
                 assert False
@@ -121,29 +147,41 @@ jmethodID runtime_error_handler_id;
 
             output += f"{argument["name"]}"
 
-        output += ") {\n"
+        output += f""") {{
+    JNIEnv *env;
+    FILL_ENV(env);
+
+"""
 
         for argument_index, argument in enumerate(fn["arguments"]):
             argument_name = argument["name"]
 
+            if argument["type"] == "i32" or argument["type"] == "id":
+                continue
+
+            # TODO: Support more types
+            assert argument["type"] == "string"
+
             if argument_index > 0:
                 output += "\n"
 
-            if argument["type"] == "string":
-                output += f"    jstring java_{argument_name} = (*global_env)->NewStringUTF(global_env, c_{argument_name});\n"
-                output += f"    ASSERT_JNI(java_{argument_name}, global_env);\n"
-            elif argument["type"] == "i32" or argument["type"] == "id":
-                pass
-            else:
-                # TODO: Support more types
-                assert False
+            output += f"    jstring java_{argument_name} = (*env)->NewStringUTF(env, c_{argument_name});\n"
+            output += f"    CHECK(env);\n"
 
         output += "    "
 
         if "return_type" in fn:
-            output += "return "
+            if fn["return_type"] == "i32":
+                output += "jint"
+            elif fn["return_type"] == "id":
+                output += "jlong"
+            else:
+                # TODO: Support more types
+                assert False
 
-        output += "(*global_env)->Call"
+            output += " result = "
+
+        output += "(*env)->Call"
 
         if "return_type" not in fn:
             output += "Void"
@@ -155,27 +193,86 @@ jmethodID runtime_error_handler_id;
             # TODO: Support more types
             assert False
 
-        output += f"Method(global_env, global_obj, game_fn_{fn_name}_id"
+        output += f"Method(env, global_obj, game_fn_{fn_name}_id"
 
         for argument_index, argument in enumerate(fn["arguments"]):
             output += f", java_{argument["name"]}"
 
         output += ");\n"
 
+        output += "    CHECK(env);\n"
+
+        if "return_type" in fn:
+            output += "    return result;\n"
+
         output += "}\n"
 
         output += "\n"
 
     output += f"""void runtime_error_handler(char *reason, enum grug_runtime_error_type type, char *on_fn_name, char *on_fn_path) {{
-    jstring java_reason = (*global_env)->NewStringUTF(global_env, reason);
-    ASSERT_JNI(java_reason, global_env);
-    jint java_type = type;
-    jstring java_on_fn_name = (*global_env)->NewStringUTF(global_env, on_fn_name);
-    ASSERT_JNI(java_on_fn_name, global_env);
-    jstring java_on_fn_path = (*global_env)->NewStringUTF(global_env, on_fn_path);
-    ASSERT_JNI(java_on_fn_path, global_env);
+    pid_t tid = gettid();
+    fprintf(stderr, "runtime_error_handler() tid: %d\\n", tid);
 
-    (*global_env)->CallVoidMethod(global_env, global_obj, runtime_error_handler_id, java_reason, java_type, java_on_fn_name, java_on_fn_path);
+    // TODO: Remove
+    if (tid != on_fn_tid) {{
+        fprintf(stderr, "tid %d != on_fn_tid %d\\n", tid, on_fn_tid);
+        exit(EXIT_FAILURE);
+        // return;
+    }}
+
+    JNIEnv *env;
+
+    jint result;
+
+    // TODO: Replace with FILL_ENV(env)
+    // This call sporadically returns -2 (JNI_EDETACHED: thread detached from the VM)
+    result = (*jvm)->GetEnv(jvm, (void**)&env, jni_version);
+    if (result != JNI_OK) {{
+        fprintf(stderr, "GetEnv failed in runtime_error_handler() with result %d on line %d\\n", result, __LINE__);
+        // exit(EXIT_FAILURE);
+    }}
+
+    pthread_t thread = pthread_self();
+
+    // TODO: REMOVE
+    #define MAX_THREAD_NAME_LEN 420
+    static char thread_name[MAX_THREAD_NAME_LEN];
+    assert(pthread_getname_np(thread, thread_name, MAX_THREAD_NAME_LEN) == 0);
+    fprintf(stderr, "thread_name: '%s'\\n", thread_name);
+
+    // #define BT_BUF_SIZE 420
+
+    // void *buffer[BT_BUF_SIZE];
+
+    // int nptrs = backtrace(buffer, BT_BUF_SIZE);
+    // printf("backtrace() returned %d addresses\\n", nptrs);
+
+    // backtrace_symbols_fd(buffer, nptrs, STDERR_FILENO);
+
+    // See https://stackoverflow.com/a/12900986/13279557
+    JavaVMAttachArgs args;
+    args.version = jni_version;
+    args.name = NULL; // you might want to give the java thread a name
+    args.group = NULL; // you might want to assign the java thread to a ThreadGroup
+
+    // TODO: REMOVE
+    // This call sporadically returns -1 (JNI_ERR: unknown error)
+    result = (*jvm)->AttachCurrentThread(jvm, (void**)&env, &args);
+    if (result < 0) {{
+        fprintf(stderr, "AttachCurrentThread failed in runtime_error_handler() with result %d\\n", result);
+        abort();
+    }}
+
+    jstring java_reason = (*env)->NewStringUTF(env, reason);
+    CHECK(env);
+    jint java_type = type;
+    jstring java_on_fn_name = (*env)->NewStringUTF(env, on_fn_name);
+    CHECK(env);
+    jstring java_on_fn_path = (*env)->NewStringUTF(env, on_fn_path);
+    CHECK(env);
+
+    (*env)->CallVoidMethod(env, global_obj, runtime_error_handler_id, java_reason, java_type, java_on_fn_name, java_on_fn_path);
+    CHECK(env);
 }}
 
 JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_errorHasChanged(JNIEnv *env, jobject obj) {{
@@ -227,10 +324,10 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_grugInit(JNIEn
     (void)obj;
 
     const char *c_mod_api_json_path = (*env)->GetStringUTFChars(env, java_mod_api_json_path, NULL);
-    ASSERT_JNI(c_mod_api_json_path, env);
+    CHECK(env);
 
     const char *c_mods_dir_path = (*env)->GetStringUTFChars(env, java_mods_dir_path, NULL);
-    ASSERT_JNI(c_mods_dir_path, env);
+    CHECK(env);
 
     bool result = grug_init(runtime_error_handler, (char *)c_mod_api_json_path, (char *)c_mods_dir_path);
 
@@ -262,17 +359,17 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillReloadData(JNI
     jclass reload_data_class = (*env)->GetObjectClass(env, reload_data_object);
 
     jfieldID path_fid = (*env)->GetFieldID(env, reload_data_class, "path", "Ljava/lang/String;");
-    ASSERT_JNI(path_fid, env);
+    CHECK(env);
     jstring path = (*env)->NewStringUTF(env, c_reload_data.path);
-    ASSERT_JNI(path, env);
+    CHECK(env);
     (*env)->SetObjectField(env, reload_data_object, path_fid, path);
 
     jfieldID old_dll_fid = (*env)->GetFieldID(env, reload_data_class, "oldDll", "J");
-    ASSERT_JNI(old_dll_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, reload_data_object, old_dll_fid, (jlong)c_reload_data.old_dll);
 
     jfieldID file_fid = (*env)->GetFieldID(env, reload_data_class, "file", "L{package_slash}/GrugFile;");
-    ASSERT_JNI(file_fid, env);
+    CHECK(env);
     jobject file_object = (*env)->GetObjectField(env, reload_data_object, file_fid);
 
     jclass file_class = (*env)->GetObjectClass(env, file_object);
@@ -280,39 +377,39 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillReloadData(JNI
     struct grug_file c_file = c_reload_data.file;
 
     jfieldID name_fid = (*env)->GetFieldID(env, file_class, "name", "Ljava/lang/String;");
-    ASSERT_JNI(name_fid, env);
+    CHECK(env);
     jstring name = (*env)->NewStringUTF(env, c_file.name);
-    ASSERT_JNI(name, env);
+    CHECK(env);
     (*env)->SetObjectField(env, file_object, name_fid, name);
 
     jfieldID dll_fid = (*env)->GetFieldID(env, file_class, "dll", "J");
-    ASSERT_JNI(dll_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, file_object, dll_fid, (jlong)c_file.dll);
 
     jfieldID define_fn_fid = (*env)->GetFieldID(env, file_class, "defineFn", "J");
-    ASSERT_JNI(define_fn_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, file_object, define_fn_fid, (jlong)c_file.define_fn);
 
     jfieldID globals_size_fid = (*env)->GetFieldID(env, file_class, "globalsSize", "I");
-    ASSERT_JNI(globals_size_fid, env);
+    CHECK(env);
     (*env)->SetIntField(env, file_object, globals_size_fid, (jint)c_file.globals_size);
 
     jfieldID init_globals_fn_fid = (*env)->GetFieldID(env, file_class, "initGlobalsFn", "J");
-    ASSERT_JNI(init_globals_fn_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, file_object, init_globals_fn_fid, (jlong)c_file.init_globals_fn);
 
     jfieldID define_type_fid = (*env)->GetFieldID(env, file_class, "defineType", "Ljava/lang/String;");
-    ASSERT_JNI(define_type_fid, env);
+    CHECK(env);
     jstring define_type = (*env)->NewStringUTF(env, c_file.define_type);
-    ASSERT_JNI(define_type, env);
+    CHECK(env);
     (*env)->SetObjectField(env, file_object, define_type_fid, define_type);
 
     jfieldID on_fns_fid = (*env)->GetFieldID(env, file_class, "onFns", "J");
-    ASSERT_JNI(on_fns_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, file_object, on_fns_fid, (jlong)c_file.on_fns);
 
     jfieldID resource_mtimes_fid = (*env)->GetFieldID(env, file_class, "resourceMtimes", "J");
-    ASSERT_JNI(resource_mtimes_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)c_file.resource_mtimes);
 }}
 
@@ -320,7 +417,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_callInitGlobals(JN
     (void)obj;
 
     jbyte *globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
-    ASSERT_JNI(globals_bytes, env);
+    CHECK(env);
 
     ((grug_init_globals_fn_t)init_globals_fn)(globals_bytes, entity_id);
 
@@ -328,23 +425,40 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_callInitGlobals(JN
 }}
 
 JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JNIEnv *env, jobject obj) {{
-    global_env = env;
+    jni_version = (*env)->GetVersion(env);
+
+    if ((*env)->GetJavaVM(env, &jvm) < 0) {{
+        (*env)->ExceptionDescribe(env);
+        exit(EXIT_FAILURE);
+    }}
+
+    pid_t tid = gettid();
+    fprintf(stderr, "initGrugAdapter() tid: %d\\n", tid);
+
+    pthread_t thread = pthread_self();
+
+    // TODO: REMOVE
+    #define MAX_THREAD_NAME_LEN 420
+    static char thread_name[MAX_THREAD_NAME_LEN];
+    assert(pthread_getname_np(thread, thread_name, MAX_THREAD_NAME_LEN) == 0);
+    fprintf(stderr, "thread_name: '%s'\\n", thread_name);
+
     global_obj = obj;
 
     jclass javaClass = (*env)->GetObjectClass(env, obj);
 
     runtime_error_handler_id = (*env)->GetMethodID(env, javaClass, "runtimeErrorHandler", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V");
-    ASSERT_JNI(runtime_error_handler_id, env);
+    CHECK(env);
 
     jclass entity_definitions_class = (*env)->FindClass(env, "{package_slash}/EntityDefinitions");
-    ASSERT_JNI(entity_definitions_class, env);
+    CHECK(env);
 """
 
     output += "\n"
 
     for entity_name, entity in mod_api["entities"].items():
         output += f'    jfieldID {entity_name}_definition_fid = (*env)->GetStaticFieldID(env, entity_definitions_class, "{snake_to_camel(entity_name)}", "L{package_slash}/Grug{snake_to_pascal(entity_name)};");\n'
-        output += f'    ASSERT_JNI({entity_name}_definition_fid, env);\n'
+        output += f"    CHECK(env);\n"
 
         output += "\n"
 
@@ -371,7 +485,9 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
 
             output += '");\n'
 
-            output += f'    ASSERT_JNI({entity_name}_definition_{field_name}_fid, env);\n'
+            output += (
+                f"    CHECK(env);\n"
+            )
 
             output += "\n"
 
@@ -390,7 +506,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
 
         output += '");\n'
 
-        output += f'    ASSERT_JNI(game_fn_{fn_name}_id, env);\n'
+        output += f"    CHECK(env);\n"
 
     output += "}\n"
 
@@ -401,21 +517,21 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillRootGrugDir(JN
     jclass dir_class = (*env)->GetObjectClass(env, dir_object);
 
     jfieldID name_fid = (*env)->GetFieldID(env, dir_class, "name", "Ljava/lang/String;");
-    ASSERT_JNI(name_fid, env);
+    CHECK(env);
     jstring name = (*env)->NewStringUTF(env, grug_mods.name);
-    ASSERT_JNI(name, env);
+    CHECK(env);
     (*env)->SetObjectField(env, dir_object, name_fid, name);
 
     jfieldID dirs_size_fid = (*env)->GetFieldID(env, dir_class, "dirsSize", "I");
-    ASSERT_JNI(dirs_size_fid, env);
+    CHECK(env);
     (*env)->SetIntField(env, dir_object, dirs_size_fid, (jint)grug_mods.dirs_size);
 
     jfieldID files_size_fid = (*env)->GetFieldID(env, dir_class, "filesSize", "I");
-    ASSERT_JNI(files_size_fid, env);
+    CHECK(env);
     (*env)->SetIntField(env, dir_object, files_size_fid, (jint)grug_mods.files_size);
 
     jfieldID address_fid = (*env)->GetFieldID(env, dir_class, "address", "J");
-    ASSERT_JNI(address_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, dir_object, address_fid, (jlong)&grug_mods);
 }}
 
@@ -429,21 +545,21 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillGrugDir(JNIEnv
     struct grug_mod_dir dir = parent_dir->dirs[dir_index];
 
     jfieldID name_fid = (*env)->GetFieldID(env, dir_class, "name", "Ljava/lang/String;");
-    ASSERT_JNI(name_fid, env);
+    CHECK(env);
     jstring name = (*env)->NewStringUTF(env, dir.name);
-    ASSERT_JNI(name, env);
+    CHECK(env);
     (*env)->SetObjectField(env, dir_object, name_fid, name);
 
     jfieldID dirs_size_fid = (*env)->GetFieldID(env, dir_class, "dirsSize", "I");
-    ASSERT_JNI(dirs_size_fid, env);
+    CHECK(env);
     (*env)->SetIntField(env, dir_object, dirs_size_fid, (jint)dir.dirs_size);
 
     jfieldID files_size_fid = (*env)->GetFieldID(env, dir_class, "filesSize", "I");
-    ASSERT_JNI(files_size_fid, env);
+    CHECK(env);
     (*env)->SetIntField(env, dir_object, files_size_fid, (jint)dir.files_size);
 
     jfieldID address_fid = (*env)->GetFieldID(env, dir_class, "address", "J");
-    ASSERT_JNI(address_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, dir_object, address_fid, (jlong)&parent_dir->dirs[dir_index]);
 }}
 
@@ -457,39 +573,39 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillGrugFile(JNIEn
     struct grug_file file = parent_dir->files[file_index];
 
     jfieldID name_fid = (*env)->GetFieldID(env, file_class, "name", "Ljava/lang/String;");
-    ASSERT_JNI(name_fid, env);
+    CHECK(env);
     jstring name = (*env)->NewStringUTF(env, file.name);
-    ASSERT_JNI(name, env);
+    CHECK(env);
     (*env)->SetObjectField(env, file_object, name_fid, name);
 
     jfieldID dll_fid = (*env)->GetFieldID(env, file_class, "dll", "J");
-    ASSERT_JNI(dll_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, file_object, dll_fid, (jlong)file.dll);
 
     jfieldID define_fn_fid = (*env)->GetFieldID(env, file_class, "defineFn", "J");
-    ASSERT_JNI(define_fn_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, file_object, define_fn_fid, (jlong)file.define_fn);
 
     jfieldID globals_size_fid = (*env)->GetFieldID(env, file_class, "globalsSize", "I");
-    ASSERT_JNI(globals_size_fid, env);
+    CHECK(env);
     (*env)->SetIntField(env, file_object, globals_size_fid, (jint)file.globals_size);
 
     jfieldID init_globals_fn_fid = (*env)->GetFieldID(env, file_class, "initGlobalsFn", "J");
-    ASSERT_JNI(init_globals_fn_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, file_object, init_globals_fn_fid, (jlong)file.init_globals_fn);
 
     jfieldID define_type_fid = (*env)->GetFieldID(env, file_class, "defineType", "Ljava/lang/String;");
-    ASSERT_JNI(define_type_fid, env);
+    CHECK(env);
     jstring define_type = (*env)->NewStringUTF(env, file.define_type);
-    ASSERT_JNI(define_type, env);
+    CHECK(env);
     (*env)->SetObjectField(env, file_object, define_type_fid, define_type);
 
     jfieldID on_fns_fid = (*env)->GetFieldID(env, file_class, "onFns", "J");
-    ASSERT_JNI(on_fns_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, file_object, on_fns_fid, (jlong)file.on_fns);
 
     jfieldID resource_mtimes_fid = (*env)->GetFieldID(env, file_class, "resourceMtimes", "J");
-    ASSERT_JNI(resource_mtimes_fid, env);
+    CHECK(env);
     (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)file.resource_mtimes);
 }}
 
@@ -536,11 +652,21 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_areOnFnsInSafe
 
             output += f"JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{snake_to_camel(entity_name)}_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jobject obj, jlong on_fns, jbyteArray globals) {{\n"
 
-            output += f"""    global_env = env;
-    global_obj = obj;
+            output += f"""    global_obj = obj;
+
+    on_fn_tid = gettid();
+    fprintf(stderr, "Java_game_Game_tool_1onUse() on_fn_tid: %d\\n", on_fn_tid);
+
+    pthread_t thread = pthread_self();
+
+    // TODO: REMOVE
+    #define MAX_THREAD_NAME_LEN 420
+    static char thread_name[MAX_THREAD_NAME_LEN];
+    assert(pthread_getname_np(thread, thread_name, MAX_THREAD_NAME_LEN) == 0);
+    fprintf(stderr, "thread_name: '%s'\\n", thread_name);
 
     jbyte *globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
-    ASSERT_JNI(globals_bytes, env);
+    CHECK(env);
 
     ((struct {entity_name}_on_fns *)on_fns)->{on_fn_name}(globals_bytes);
 
