@@ -609,6 +609,57 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillGrugFile(JNIEn
     (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)file.resource_mtimes);
 }}
 
+JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_getEntityFile(JNIEnv *env, jobject obj, jstring java_entity_name, jobject file_object) {{
+    (void)obj;
+
+    jclass file_class = (*env)->GetObjectClass(env, file_object);
+
+    const char *c_entity_name = (*env)->GetStringUTFChars(env, java_entity_name, NULL);
+    CHECK(env);
+
+    struct grug_file *file_ptr = grug_get_entity_file((char *)c_entity_name);
+    assert(file_ptr);
+    struct grug_file file = *file_ptr;
+
+    (*env)->ReleaseStringUTFChars(env, java_entity_name, c_entity_name);
+
+    jfieldID name_fid = (*env)->GetFieldID(env, file_class, "name", "Ljava/lang/String;");
+    CHECK(env);
+    jstring name = (*env)->NewStringUTF(env, file.name);
+    CHECK(env);
+    (*env)->SetObjectField(env, file_object, name_fid, name);
+
+    jfieldID dll_fid = (*env)->GetFieldID(env, file_class, "dll", "J");
+    CHECK(env);
+    (*env)->SetLongField(env, file_object, dll_fid, (jlong)file.dll);
+
+    jfieldID define_fn_fid = (*env)->GetFieldID(env, file_class, "defineFn", "J");
+    CHECK(env);
+    (*env)->SetLongField(env, file_object, define_fn_fid, (jlong)file.define_fn);
+
+    jfieldID globals_size_fid = (*env)->GetFieldID(env, file_class, "globalsSize", "I");
+    CHECK(env);
+    (*env)->SetIntField(env, file_object, globals_size_fid, (jint)file.globals_size);
+
+    jfieldID init_globals_fn_fid = (*env)->GetFieldID(env, file_class, "initGlobalsFn", "J");
+    CHECK(env);
+    (*env)->SetLongField(env, file_object, init_globals_fn_fid, (jlong)file.init_globals_fn);
+
+    jfieldID define_type_fid = (*env)->GetFieldID(env, file_class, "defineType", "Ljava/lang/String;");
+    CHECK(env);
+    jstring define_type = (*env)->NewStringUTF(env, file.define_type);
+    CHECK(env);
+    (*env)->SetObjectField(env, file_object, define_type_fid, define_type);
+
+    jfieldID on_fns_fid = (*env)->GetFieldID(env, file_class, "onFns", "J");
+    CHECK(env);
+    (*env)->SetLongField(env, file_object, on_fns_fid, (jlong)file.on_fns);
+
+    jfieldID resource_mtimes_fid = (*env)->GetFieldID(env, file_class, "resourceMtimes", "J");
+    CHECK(env);
+    (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)file.resource_mtimes);
+}}
+
 JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_callDefineFn(JNIEnv *env, jobject obj, jlong define_fn) {{
     (void)env;
     (void)obj;
