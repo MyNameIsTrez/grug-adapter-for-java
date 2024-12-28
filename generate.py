@@ -382,6 +382,12 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillReloadData(JNI
     CHECK(env);
     (*env)->SetObjectField(env, file_object, name_fid, name);
 
+    jfieldID entity_fid = (*env)->GetFieldID(env, file_class, "entity", "Ljava/lang/String;");
+    CHECK(env);
+    jstring entity = (*env)->NewStringUTF(env, c_file.entity);
+    CHECK(env);
+    (*env)->SetObjectField(env, file_object, entity_fid, entity);
+
     jfieldID dll_fid = (*env)->GetFieldID(env, file_class, "dll", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, dll_fid, (jlong)c_file.dll);
@@ -413,7 +419,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillReloadData(JNI
     (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)c_file.resource_mtimes);
 }}
 
-JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_callInitGlobals(JNIEnv *env, jobject obj, jlong init_globals_fn, jbyteArray globals, jint entity_id) {{
+JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_callInitGlobals(JNIEnv *env, jobject obj, jlong init_globals_fn, jbyteArray globals, jlong entity_id) {{
     (void)obj;
 
     jbyte *globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
@@ -578,6 +584,12 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillGrugFile(JNIEn
     CHECK(env);
     (*env)->SetObjectField(env, file_object, name_fid, name);
 
+    jfieldID entity_fid = (*env)->GetFieldID(env, file_class, "entity", "Ljava/lang/String;");
+    CHECK(env);
+    jstring entity = (*env)->NewStringUTF(env, file.entity);
+    CHECK(env);
+    (*env)->SetObjectField(env, file_object, entity_fid, entity);
+
     jfieldID dll_fid = (*env)->GetFieldID(env, file_class, "dll", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, dll_fid, (jlong)file.dll);
@@ -609,25 +621,31 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillGrugFile(JNIEn
     (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)file.resource_mtimes);
 }}
 
-JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_getEntityFile(JNIEnv *env, jobject obj, jstring java_entity_name, jobject file_object) {{
+JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_getEntityFile(JNIEnv *env, jobject obj, jstring java_entity, jobject file_object) {{
     (void)obj;
 
     jclass file_class = (*env)->GetObjectClass(env, file_object);
 
-    const char *c_entity_name = (*env)->GetStringUTFChars(env, java_entity_name, NULL);
+    const char *c_entity = (*env)->GetStringUTFChars(env, java_entity, NULL);
     CHECK(env);
 
-    struct grug_file *file_ptr = grug_get_entity_file((char *)c_entity_name);
+    struct grug_file *file_ptr = grug_get_entity_file((char *)c_entity);
     assert(file_ptr);
     struct grug_file file = *file_ptr;
 
-    (*env)->ReleaseStringUTFChars(env, java_entity_name, c_entity_name);
+    (*env)->ReleaseStringUTFChars(env, java_entity, c_entity);
 
     jfieldID name_fid = (*env)->GetFieldID(env, file_class, "name", "Ljava/lang/String;");
     CHECK(env);
     jstring name = (*env)->NewStringUTF(env, file.name);
     CHECK(env);
     (*env)->SetObjectField(env, file_object, name_fid, name);
+
+    jfieldID entity_fid = (*env)->GetFieldID(env, file_class, "entity", "Ljava/lang/String;");
+    CHECK(env);
+    jstring entity = (*env)->NewStringUTF(env, file.entity);
+    CHECK(env);
+    (*env)->SetObjectField(env, file_object, entity_fid, entity);
 
     jfieldID dll_fid = (*env)->GetFieldID(env, file_class, "dll", "J");
     CHECK(env);
@@ -706,15 +724,15 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_areOnFnsInSafe
             output += f"""    global_obj = obj;
 
     on_fn_tid = gettid();
-    fprintf(stderr, "Java_game_Game_tool_1onUse() on_fn_tid: %d\\n", on_fn_tid);
+    // fprintf(stderr, "Java_game_Game_tool_1onUse() on_fn_tid: %d\\n", on_fn_tid);
 
-    pthread_t thread = pthread_self();
+    // pthread_t thread = pthread_self();
 
     // TODO: REMOVE
-    #define MAX_THREAD_NAME_LEN 420
-    static char thread_name[MAX_THREAD_NAME_LEN];
-    assert(pthread_getname_np(thread, thread_name, MAX_THREAD_NAME_LEN) == 0);
-    fprintf(stderr, "thread_name: '%s'\\n", thread_name);
+    // #define MAX_THREAD_NAME_LEN 420
+    // static char thread_name[MAX_THREAD_NAME_LEN];
+    // assert(pthread_getname_np(thread, thread_name, MAX_THREAD_NAME_LEN) == 0);
+    // fprintf(stderr, "thread_name: '%s'\\n", thread_name);
 
     jbyte *globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
     CHECK(env);
