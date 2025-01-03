@@ -68,7 +68,7 @@ typedef uint64_t id;
 jint jni_version;
 JavaVM* jvm;
 
-pid_t on_fn_tid;
+// pthread_t on_fn_thread;
 
 // TODO: Get rid of this!
 jobject global_obj;
@@ -210,15 +210,13 @@ jmethodID runtime_error_handler_id;
         output += "\n"
 
     output += f"""void runtime_error_handler(char *reason, enum grug_runtime_error_type type, char *on_fn_name, char *on_fn_path) {{
-    pid_t tid = gettid();
-    fprintf(stderr, "runtime_error_handler() tid: %d\\n", tid);
+    // pthread_t thread = pthread_self();
+    // fprintf(stderr, "runtime_error_handler() thread: %lu\\n", thread);
 
-    // TODO: Remove
-    if (tid != on_fn_tid) {{
-        fprintf(stderr, "tid %d != on_fn_tid %d\\n", tid, on_fn_tid);
-        exit(EXIT_FAILURE);
-        // return;
-    }}
+    // #define MAX_THREAD_NAME_LEN 420
+    // static char thread_name[MAX_THREAD_NAME_LEN];
+    // assert(pthread_getname_np(thread, thread_name, MAX_THREAD_NAME_LEN) == 0);
+    // fprintf(stderr, "thread_name: '%s'\\n", thread_name);
 
     JNIEnv *env;
 
@@ -231,14 +229,6 @@ jmethodID runtime_error_handler_id;
         fprintf(stderr, "GetEnv failed in runtime_error_handler() with result %d on line %d\\n", result, __LINE__);
         // exit(EXIT_FAILURE);
     }}
-
-    pthread_t thread = pthread_self();
-
-    // TODO: REMOVE
-    #define MAX_THREAD_NAME_LEN 420
-    static char thread_name[MAX_THREAD_NAME_LEN];
-    assert(pthread_getname_np(thread, thread_name, MAX_THREAD_NAME_LEN) == 0);
-    fprintf(stderr, "thread_name: '%s'\\n", thread_name);
 
     // #define BT_BUF_SIZE 420
 
@@ -723,8 +713,8 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_areOnFnsInSafe
 
             output += f"""    global_obj = obj;
 
-    on_fn_tid = gettid();
-    // fprintf(stderr, "Java_game_Game_tool_1onUse() on_fn_tid: %d\\n", on_fn_tid);
+    // on_fn_thread = pthread_self();
+    // fprintf(stderr, "Java_game_Game_tool_1onUse() thread: %lu\\n", on_fn_thread);
 
     // pthread_t thread = pthread_self();
 
