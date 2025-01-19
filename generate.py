@@ -18,6 +18,7 @@ def get_output(mod_api, package_slash, grug_class):
 #include <pthread.h> // TODO: REMOVE!
 #include <stdbool.h>
 #include <stdio.h>
+#include <sys/mman.h>
 
 typedef char* string;
 typedef int32_t i32;
@@ -25,11 +26,20 @@ typedef uint64_t id;
 
 #ifdef DONT_CHECK_EXCEPTIONS
 #define CHECK(env)
+
+#define CHECK_NEW_GLOBAL_REF(result)
 #else
 #define CHECK(env) {\\
     if ((*env)->ExceptionCheck(env)) {\\
         fprintf(stderr, "Exception detected at %s:%d\\n", __FILE__, __LINE__);\\
         (*env)->ExceptionDescribe(env);\\
+        exit(EXIT_FAILURE);\\
+    }\\
+}
+
+#define CHECK_NEW_GLOBAL_REF(result) {\\
+    if (result == NULL) {\\
+        fprintf(stderr, "NewGlobalRef() error detected at %s:%d\\n", __FILE__, __LINE__);\\
         exit(EXIT_FAILURE);\\
     }\\
 }
@@ -46,6 +56,12 @@ typedef uint64_t id;
         exit(EXIT_FAILURE);\\
     }\\
 }
+
+// This indicates something can't be made static,
+// since the value is shared between the two opened libadapter.so instances:
+// One that Java uses to call native C functions,
+// and one with RTLD_GLOBAL that mods use to find the game function bindings
+#define not_static
 """
 
     output += "\n"
@@ -67,29 +83,43 @@ typedef uint64_t id;
         output += "};\n"
 
     output += """
-jint jni_version;
-JavaVM* jvm;
+not_static jint jni_version;
+not_static JavaVM* jvm;
 
+// TODO: Remove
 // pthread_t on_fn_thread;
 
-// TODO: Get rid of this!
-jobject global_obj;
+not_static jclass grug_class;
 
-jmethodID runtime_error_handler_id;
+// This is used to temporarily switch to an mmap()ed stack.
+// This is necessary, since the JVM turns page guards off for its threads.
+// This means any stack overflows our C code causes can corrupt the JVM:
+// https://hg.openjdk.org/jdk/jdk/file/8ae33203d600/src/hotspot/os/linux/os_linux.cpp#l3168
+//
+// I explain the solution this code takes in detail here: https://stackoverflow.com/a/79347305/13279557
+static void *stack;
+not_static int64_t real_rbp;
+not_static int64_t real_rsp;
+static jbyte *static_globals_bytes; // TODO: Move this inside of the on fn
+static jlong static_on_fns; // TODO: Move this inside of the on fn
+
+not_static jmethodID runtime_error_handler_id;
 """
 
     output += "\n"
 
     for name, entity in mod_api["entities"].items():
+        output += f"// TODO: Either mark this static or non_static:\n"
         output += f"jobject {name}_definition_obj;\n"
 
         for field in entity["fields"]:
+            output += f"// TODO: Either mark this static or non_static:\n"
             output += f"jfieldID {name}_definition_{field["name"]}_fid;\n"
 
         output += "\n"
 
     for name in mod_api["game_functions"].keys():
-        output += f"jmethodID game_fn_{name}_id;\n"
+        output += f"not_static jmethodID game_fn_{name}_id;\n"
 
     output += "\n"
 
@@ -139,10 +169,8 @@ jmethodID runtime_error_handler_id;
 
             output += f"{argument["type"]} "
 
-            if argument["type"] == "string":
+            if argument["type"] == "string" or argument["type"] == "i32" or argument["type"] == "id":
                 output += "c_"
-            elif argument["type"] == "i32" or argument["type"] == "id":
-                output += "java_"
             else:
                 # TODO: Support more types
                 assert False
@@ -150,7 +178,7 @@ jmethodID runtime_error_handler_id;
             output += f"{argument["name"]}"
 
         output += f""") {{
-    JNIEnv *env;
+    static JNIEnv *env;
     FILL_ENV(env);
 
 """
@@ -158,18 +186,63 @@ jmethodID runtime_error_handler_id;
         for argument_index, argument in enumerate(fn["arguments"]):
             argument_name = argument["name"]
 
-            if argument["type"] == "i32" or argument["type"] == "id":
-                continue
-
-            # TODO: Support more types
-            assert argument["type"] == "string"
-
             if argument_index > 0:
                 output += "\n"
 
-            output += f"    jstring java_{argument_name} = (*env)->NewStringUTF(env, c_{argument_name});\n"
-            output += f"    CHECK(env);\n"
+            if argument["type"] == "string":
+                output += f"    static jstring java_{argument_name};\n"
+                output += f"    java_{argument_name} = (*env)->NewStringUTF(env, c_{argument_name});\n"
+                output += f"    CHECK(env);\n"
+            elif argument["type"] == "i32":
+                output += f"    static jint static_{argument_name};\n"
+                output += f"    static_{argument_name} = c_{argument_name};\n"
+            elif argument["type"] == "id":
+                output += f"    static jlong static_{argument_name};\n"
+                output += f"    static_{argument_name} = c_{argument_name};\n"
+            else:
+                # TODO: Support more types
+                assert False
 
+        output += f"""
+    // write(STDERR_FILENO, "a\\n", 2);
+
+    // Save fake_rbp and fake_rsp
+    // Marking these static is necessary for restoring
+    static int64_t fake_rsp;
+    static int64_t fake_rbp;
+    __asm__ volatile("mov %%rsp, %0\\n\\t" : "=r" (fake_rsp));
+    // write(STDERR_FILENO, "bb\\n", 3);
+    __asm__ volatile("mov %%rbp, %0\\n\\t" : "=r" (fake_rbp));
+    // write(STDERR_FILENO, "ccc\\n", 4);
+
+    // Assert 16-byte alignment
+    assert((fake_rsp & 0xf) == 0);
+    assert((fake_rbp & 0xf) == 0);
+
+    // fprintf(stderr, "real_rbp: %p\\n", (void *)real_rbp);
+    // fprintf(stderr, "real_rsp: %p\\n", (void *)real_rsp);
+
+    // Use real_rbp and real_rsp
+    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (real_rsp));
+    // write(STDERR_FILENO, "dddd\\n", 5);
+    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (real_rbp));
+    // write(STDERR_FILENO, "eeeee\\n", 6);
+
+    // Assert 16-byte alignment
+    assert((real_rsp & 0xf) == 0);
+    assert((real_rbp & 0xf) == 0);
+"""
+
+#         if fn_name == "print_i32":
+#             output += """
+#     fprintf(stderr, "env: %p\\n", (void *)env);
+#     fprintf(stderr, "grug_class: %p\\n", (void *)grug_class);
+#     fprintf(stderr, "game_fn_print_i32_id: %p\\n", (void *)game_fn_print_i32_id);
+#     fprintf(stderr, "static_n: %d\\n", static_n);
+#     write(STDERR_FILENO, "ffffff\\n", 7);
+# """
+
+        output += "\n"
         output += "    "
 
         if "return_type" in fn:
@@ -183,7 +256,7 @@ jmethodID runtime_error_handler_id;
 
             output += " result = "
 
-        output += "(*env)->Call"
+        output += "(*env)->CallStatic"
 
         if "return_type" not in fn:
             output += "Void"
@@ -195,16 +268,34 @@ jmethodID runtime_error_handler_id;
             # TODO: Support more types
             assert False
 
-        output += f"Method(env, global_obj, game_fn_{fn_name}_id"
+        output += f"Method(env, grug_class, game_fn_{fn_name}_id"
 
         for argument_index, argument in enumerate(fn["arguments"]):
-            output += f", java_{argument["name"]}"
+            output += ", "
+
+            if argument["type"] == "string":
+                output += "java_"
+            elif argument["type"] == "i32" or argument["type"] == "id":
+                output += "static_"
+            else:
+                # TODO: Support more types
+                assert False
+
+            output += argument["name"]
 
         output += ");\n"
 
+        output += "    // write(STDERR_FILENO, \"ggggggg\\n\", 8);\n"
         output += "    CHECK(env);\n"
 
+        output += """
+    // Restore fake_rbp and fake_rsp
+    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (fake_rsp));
+    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (fake_rbp));
+"""
+
         if "return_type" in fn:
+            output += "\n"
             output += "    return result;\n"
 
         output += "}\n"
@@ -212,59 +303,83 @@ jmethodID runtime_error_handler_id;
         output += "\n"
 
     output += f"""void runtime_error_handler(char *reason, enum grug_runtime_error_type type, char *on_fn_name, char *on_fn_path) {{
-    // pthread_t thread = pthread_self();
-    // fprintf(stderr, "runtime_error_handler() thread: %lu\\n", thread);
+    write(STDERR_FILENO, "a\\n", 2);
 
-    // #define MAX_THREAD_NAME_LEN 420
-    // static char thread_name[MAX_THREAD_NAME_LEN];
-    // assert(pthread_getname_np(thread, thread_name, MAX_THREAD_NAME_LEN) == 0);
-    // fprintf(stderr, "thread_name: '%s'\\n", thread_name);
+    static JNIEnv *env;
+    FILL_ENV(env);
 
-    JNIEnv *env;
+    write(STDERR_FILENO, "bb\\n", 3);
 
-    jint result;
-
-    // TODO: Replace with FILL_ENV(env)
-    // This call sporadically returns -2 (JNI_EDETACHED: thread detached from the VM)
-    result = (*jvm)->GetEnv(jvm, (void**)&env, jni_version);
-    if (result != JNI_OK) {{
-        fprintf(stderr, "GetEnv failed in runtime_error_handler() with result %d on line %d\\n", result, __LINE__);
-        // exit(EXIT_FAILURE);
-    }}
-
-    // #define BT_BUF_SIZE 420
-
-    // void *buffer[BT_BUF_SIZE];
-
-    // int nptrs = backtrace(buffer, BT_BUF_SIZE);
-    // printf("backtrace() returned %d addresses\\n", nptrs);
-
-    // backtrace_symbols_fd(buffer, nptrs, STDERR_FILENO);
-
-    // See https://stackoverflow.com/a/12900986/13279557
-    JavaVMAttachArgs args;
-    args.version = jni_version;
-    args.name = NULL; // you might want to give the java thread a name
-    args.group = NULL; // you might want to assign the java thread to a ThreadGroup
-
-    // TODO: REMOVE
-    // This call sporadically returns -1 (JNI_ERR: unknown error)
-    result = (*jvm)->AttachCurrentThread(jvm, (void**)&env, &args);
-    if (result < 0) {{
-        fprintf(stderr, "AttachCurrentThread failed in runtime_error_handler() with result %d\\n", result);
-        abort();
-    }}
-
-    jstring java_reason = (*env)->NewStringUTF(env, reason);
-    CHECK(env);
-    jint java_type = type;
-    jstring java_on_fn_name = (*env)->NewStringUTF(env, on_fn_name);
-    CHECK(env);
-    jstring java_on_fn_path = (*env)->NewStringUTF(env, on_fn_path);
+    static jstring static_reason;
+    static_reason = (*env)->NewStringUTF(env, reason);
     CHECK(env);
 
-    (*env)->CallVoidMethod(env, global_obj, runtime_error_handler_id, java_reason, java_type, java_on_fn_name, java_on_fn_path);
+    write(STDERR_FILENO, "ccc\\n", 4);
+
+    static jint static_type;
+    static_type = type;
+
+    write(STDERR_FILENO, "dddd\\n", 5);
+
+    static jstring static_on_fn_name;
+    static_on_fn_name = (*env)->NewStringUTF(env, on_fn_name);
     CHECK(env);
+
+    write(STDERR_FILENO, "eeeee\\n", 6);
+
+    static jstring static_on_fn_path;
+    static_on_fn_path = (*env)->NewStringUTF(env, on_fn_path);
+    CHECK(env);
+
+    write(STDERR_FILENO, "ffffff\\n", 7);
+
+    // Save fake_rbp and fake_rsp
+    // Marking these static is necessary for restoring
+    static int64_t fake_rsp;
+    static int64_t fake_rbp;
+    __asm__ volatile("mov %%rsp, %0\\n\\t" : "=r" (fake_rsp));
+    __asm__ volatile("mov %%rbp, %0\\n\\t" : "=r" (fake_rbp));
+
+    // Assert 16-byte alignment
+    assert((fake_rsp & 0xf) == 0);
+    assert((fake_rbp & 0xf) == 0);
+
+    write(STDERR_FILENO, "ggggggg\\n", 8);
+
+    fprintf(stderr, "reason: %s\\n", reason);
+    fprintf(stderr, "on_fn_name: %s\\n", on_fn_name);
+    fprintf(stderr, "on_fn_path: %s\\n", on_fn_path);
+
+    // Use real_rbp and real_rsp
+    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (real_rsp));
+    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (real_rbp));
+
+    // Assert 16-byte alignment
+    assert((real_rsp & 0xf) == 0);
+    assert((real_rbp & 0xf) == 0);
+
+    write(STDERR_FILENO, "hhhhhhhh\\n", 9);
+
+    // TODO: REMOVE!
+    fprintf(stderr, "env: %p\\n", (void *)env);
+    fprintf(stderr, "grug_class: %p\\n", (void *)grug_class);
+    fprintf(stderr, "runtime_error_handler_id: %p\\n", (void *)runtime_error_handler_id);
+    fprintf(stderr, "static_reason: %p\\n", (void *)static_reason);
+    fprintf(stderr, "static_type: %d\\n", static_type);
+    fprintf(stderr, "static_on_fn_name: %p\\n", (void *)static_on_fn_name);
+    fprintf(stderr, "static_on_fn_path: %p\\n", (void *)static_on_fn_path);
+
+    (*env)->CallStaticVoidMethod(env, grug_class, runtime_error_handler_id, static_reason, static_type, static_on_fn_name, static_on_fn_path);
+    write(STDERR_FILENO, "iiiiiiiii\\n", 10);
+    CHECK(env);
+
+    write(STDERR_FILENO, "jjjjjjjjjj\\n", 11);
+
+    // Restore fake_rbp and fake_rsp
+    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (fake_rsp));
+    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (fake_rbp));
+
+    write(STDERR_FILENO, "kkkkkkkkkkk\\n", 12);
 }}
 
 JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_errorHasChanged(JNIEnv *env, jobject obj) {{
@@ -441,11 +556,10 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
     assert(pthread_getname_np(thread, thread_name, MAX_THREAD_NAME_LEN) == 0);
     fprintf(stderr, "thread_name: '%s'\\n", thread_name);
 
-    global_obj = obj;
+    grug_class = (*env)->NewGlobalRef(env, (*env)->GetObjectClass(env, obj));
+    CHECK_NEW_GLOBAL_REF(grug_class);
 
-    jclass javaClass = (*env)->GetObjectClass(env, obj);
-
-    runtime_error_handler_id = (*env)->GetMethodID(env, javaClass, "runtimeErrorHandler", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V");
+    runtime_error_handler_id = (*env)->GetStaticMethodID(env, grug_class, "runtimeErrorHandler", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V");
     CHECK(env);
 
     jclass entity_definitions_class = (*env)->FindClass(env, "{package_slash}/EntityDefinitions");
@@ -465,6 +579,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
         output += "\n"
 
         output += f"    {entity_name}_definition_obj = (*env)->NewGlobalRef(env, {entity_name}_definition_obj);\n"
+        output += f"    CHECK_NEW_GLOBAL_REF({entity_name}_definition_obj);\n"
 
         output += "\n"
 
@@ -493,7 +608,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
         if fn_index > 0:
             output += "\n"
 
-        output += f'    game_fn_{fn_name}_id = (*env)->GetMethodID(env, javaClass, "gameFn_{snake_to_camel(fn_name)}", "('
+        output += f'    game_fn_{fn_name}_id = (*env)->GetStaticMethodID(env, grug_class, "gameFn_{snake_to_camel(fn_name)}", "('
 
         for argument in fn["arguments"]:
             output += get_signature_type(argument["type"])
@@ -692,6 +807,37 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_areOnFnsInSafe
 }}
 """
 
+    # TODO: Remove!
+    output += """
+extern jmp_buf grug_runtime_error_jmp_buffer;
+extern grug_runtime_error_handler_t grug_runtime_error_handler;
+void grug_disable_on_fn_runtime_error_handling(void);
+void grug_enable_on_fn_runtime_error_handling(void);
+char *grug_get_runtime_error_reason(void);
+extern volatile sig_atomic_t grug_runtime_error_type;
+extern sigset_t grug_block_mask;
+static void dummy(void) {
+    grug_on_fn_path = "tests/err_runtime/division_by_0/input.grug";
+    grug_on_fn_name = "on_a";
+
+    if (sigsetjmp(grug_runtime_error_jmp_buffer, 1)) {
+        grug_runtime_error_handler(grug_get_runtime_error_reason(), grug_runtime_error_type, "on_a", "tests/err_runtime/division_by_0/input.grug");
+        return;
+    }
+
+    grug_enable_on_fn_runtime_error_handling();
+
+    // Only blocks SIGALRM
+    pthread_sigmask(SIG_BLOCK, &grug_block_mask, 0);
+    game_fn_print_i32(7);
+    pthread_sigmask(SIG_UNBLOCK, &grug_block_mask, 0);
+
+    grug_disable_on_fn_runtime_error_handling();
+
+    return;
+}
+"""
+
     output += "\n"
 
     for entity_name, entity in mod_api["entities"].items():
@@ -711,9 +857,11 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_areOnFnsInSafe
 
             output += "\n"
 
-            output += f"JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{snake_to_camel(entity_name)}_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jobject obj, jlong on_fns, jbyteArray globals) {{\n"
+            output += f"JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{snake_to_camel(entity_name)}_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jclass clazz, jlong on_fns, jbyteArray globals) {{\n"
 
-            output += f"""    global_obj = obj;
+            output += f"""    (void)clazz;
+
+    fprintf(stderr, "In {snake_to_camel(on_fn_name)}\\n");
 
     // on_fn_thread = pthread_self();
     // fprintf(stderr, "Java_game_Game_tool_1onUse() thread: %lu\\n", on_fn_thread);
@@ -726,12 +874,83 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_areOnFnsInSafe
     // assert(pthread_getname_np(thread, thread_name, MAX_THREAD_NAME_LEN) == 0);
     // fprintf(stderr, "thread_name: '%s'\\n", thread_name);
 
-    jbyte *globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
+    static_globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
     CHECK(env);
+    
+    static_on_fns = on_fns;
 
-    ((struct {entity_name}_on_fns *)on_fns)->{on_fn_name}(globals_bytes);
+    size_t page_count = 8192;
+    size_t page_size = sysconf(_SC_PAGE_SIZE);
+    size_t length = page_count * page_size;
 
-    (*env)->ReleaseByteArrayElements(env, globals, globals_bytes, 0);
+    // TODO: Try getting rid of the MAP_GROWSDOWN, since its feature of growing the stack is unnecessary
+    // TODO: I think the `static` can be removed from this
+    static void *map;
+    // map = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    map = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_GROWSDOWN, -1, 0);
+    if (map == MAP_FAILED) {{
+        perror("mmap");
+        exit(EXIT_FAILURE);
+    }}
+
+    // Asserting 16-byte alignment here is not necessary,
+    // since mmap() guarantees it with the args we pass it
+    assert(((size_t)map & 0xf) == 0);
+
+    stack = (char *)map + length;
+
+    // Asserting 16-byte alignment here is not necessary,
+    // since mmap() guarantees it with the args we pass it
+    assert(((size_t)stack & 0xf) == 0);
+
+    // Save rbp and rsp
+    __asm__ volatile("mov %%rsp, %0\\n\\t" : "=r" (real_rsp));
+    __asm__ volatile("mov %%rbp, %0\\n\\t" : "=r" (real_rbp));
+
+    // Assert 16-byte alignment
+    assert((real_rsp & 0xf) == 0);
+    assert((real_rbp & 0xf) == 0);
+
+    fprintf(stderr, "Preparing to call {on_fn_name}()\\n");
+
+    // Set rbp and rsp to the very start of the mmap-ed memory
+    //
+    // TODO: I think setting rsp and rbp here is UB?:
+    // "Another restriction is that the clobber list should not contain
+    // the stack pointer register. This is because the compiler requires
+    // the value of the stack pointer to be the same after an asm statement
+    // as it was on entry to the statement. However, previous versions
+    // of GCC did not enforce this rule and allowed the stack pointer
+    // to appear in the list, with unclear semantics. This behavior
+    // is deprecated and listing the stack pointer may become an error
+    // in future versions of GCC."
+    // From https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html
+    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (stack));
+    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (stack));
+
+    write(STDERR_FILENO, "Calling\\n", 8);
+    fprintf(stderr, "stack: %p\\n", (void *)stack);
+    fprintf(stderr, "static_on_fns: %p\\n", (void *)static_on_fns);
+    fprintf(stderr, "static_globals_bytes: %p\\n", (void *)static_globals_bytes);
+
+    // TODO: Put this back!
+    // ((struct {entity_name}_on_fns *)static_on_fns)->{on_fn_name}(static_globals_bytes);
+
+    // TODO: Remove this!
+    while (true) {{
+        dummy();
+    }}
+
+    // Restore rbp and rsp
+    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (real_rsp));
+    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (real_rbp));
+
+    if (munmap(map, length) == -1) {{
+        perror("munmap");
+        exit(EXIT_FAILURE);
+    }}
+
+    (*env)->ReleaseByteArrayElements(env, globals, static_globals_bytes, 0);
 """
 
             output += "}\n"
