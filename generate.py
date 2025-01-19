@@ -210,9 +210,9 @@ not_static jmethodID runtime_error_handler_id;
     // Marking these static is necessary for restoring
     static int64_t fake_rsp;
     static int64_t fake_rbp;
-    __asm__ volatile("mov %%rsp, %0\\n\\t" : "=r" (fake_rsp));
+    // __asm__ volatile("mov %%rsp, %0\\n\\t" : "=r" (fake_rsp));
     // write(STDERR_FILENO, "bb\\n", 3);
-    __asm__ volatile("mov %%rbp, %0\\n\\t" : "=r" (fake_rbp));
+    // __asm__ volatile("mov %%rbp, %0\\n\\t" : "=r" (fake_rbp));
     // write(STDERR_FILENO, "ccc\\n", 4);
 
     // Assert 16-byte alignment
@@ -223,9 +223,9 @@ not_static jmethodID runtime_error_handler_id;
     // fprintf(stderr, "real_rsp: %p\\n", (void *)real_rsp);
 
     // Use real_rbp and real_rsp
-    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (real_rsp));
+    // __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (real_rsp));
     // write(STDERR_FILENO, "dddd\\n", 5);
-    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (real_rbp));
+    // __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (real_rbp));
     // write(STDERR_FILENO, "eeeee\\n", 6);
 
     // Assert 16-byte alignment
@@ -290,8 +290,8 @@ not_static jmethodID runtime_error_handler_id;
 
         output += """
     // Restore fake_rbp and fake_rsp
-    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (fake_rsp));
-    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (fake_rbp));
+    // __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (fake_rsp));
+    // __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (fake_rbp));
 """
 
         if "return_type" in fn:
@@ -337,8 +337,8 @@ not_static jmethodID runtime_error_handler_id;
     // Marking these static is necessary for restoring
     static int64_t fake_rsp;
     static int64_t fake_rbp;
-    __asm__ volatile("mov %%rsp, %0\\n\\t" : "=r" (fake_rsp));
-    __asm__ volatile("mov %%rbp, %0\\n\\t" : "=r" (fake_rbp));
+    // __asm__ volatile("mov %%rsp, %0\\n\\t" : "=r" (fake_rsp));
+    // __asm__ volatile("mov %%rbp, %0\\n\\t" : "=r" (fake_rbp));
 
     // Assert 16-byte alignment
     assert((fake_rsp & 0xf) == 0);
@@ -351,8 +351,8 @@ not_static jmethodID runtime_error_handler_id;
     fprintf(stderr, "on_fn_path: %s\\n", on_fn_path);
 
     // Use real_rbp and real_rsp
-    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (real_rsp));
-    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (real_rbp));
+    // __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (real_rsp));
+    // __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (real_rbp));
 
     // Assert 16-byte alignment
     assert((real_rsp & 0xf) == 0);
@@ -376,8 +376,8 @@ not_static jmethodID runtime_error_handler_id;
     write(STDERR_FILENO, "jjjjjjjjjj\\n", 11);
 
     // Restore fake_rbp and fake_rsp
-    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (fake_rsp));
-    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (fake_rbp));
+    // __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (fake_rsp));
+    // __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (fake_rbp));
 
     write(STDERR_FILENO, "kkkkkkkkkkk\\n", 12);
 }}
@@ -863,6 +863,12 @@ static void dummy(void) {
 
     fprintf(stderr, "In {snake_to_camel(on_fn_name)}\\n");
 
+    // #define BT_BUF_SIZE 420
+    // void *buffer[BT_BUF_SIZE];
+    // int nptrs = backtrace(buffer, BT_BUF_SIZE);
+    // fprintf(stderr, "backtrace() returned %d addresses\\n", nptrs);
+    // backtrace_symbols_fd(buffer, nptrs, STDERR_FILENO);
+
     // on_fn_thread = pthread_self();
     // fprintf(stderr, "Java_game_Game_tool_1onUse() thread: %lu\\n", on_fn_thread);
 
@@ -904,8 +910,8 @@ static void dummy(void) {
     assert(((size_t)stack & 0xf) == 0);
 
     // Save rbp and rsp
-    __asm__ volatile("mov %%rsp, %0\\n\\t" : "=r" (real_rsp));
-    __asm__ volatile("mov %%rbp, %0\\n\\t" : "=r" (real_rbp));
+    // __asm__ volatile("mov %%rsp, %0\\n\\t" : "=r" (real_rsp));
+    // __asm__ volatile("mov %%rbp, %0\\n\\t" : "=r" (real_rbp));
 
     // Assert 16-byte alignment
     assert((real_rsp & 0xf) == 0);
@@ -925,8 +931,8 @@ static void dummy(void) {
     // is deprecated and listing the stack pointer may become an error
     // in future versions of GCC."
     // From https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html
-    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (stack));
-    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (stack));
+    // __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (stack));
+    // __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (stack));
 
     write(STDERR_FILENO, "Calling\\n", 8);
     fprintf(stderr, "stack: %p\\n", (void *)stack);
@@ -942,8 +948,8 @@ static void dummy(void) {
     }}
 
     // Restore rbp and rsp
-    __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (real_rsp));
-    __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (real_rbp));
+    // __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (real_rsp));
+    // __asm__ volatile("mov %0, %%rbp\\n\\t" : : "r" (real_rbp));
 
     if (munmap(map, length) == -1) {{
         perror("munmap");
