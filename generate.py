@@ -821,16 +821,37 @@ static void dummy(void) {
     grug_on_fn_name = "on_a";
 
     if (sigsetjmp(grug_runtime_error_jmp_buffer, 1)) {
-        grug_runtime_error_handler(grug_get_runtime_error_reason(), grug_runtime_error_type, "on_a", "tests/err_runtime/division_by_0/input.grug");
+        // grug_runtime_error_handler(grug_get_runtime_error_reason(), grug_runtime_error_type, "on_a", "tests/err_runtime/division_by_0/input.grug");
         return;
     }
 
     grug_enable_on_fn_runtime_error_handling();
 
-    // Only blocks SIGALRM
-    pthread_sigmask(SIG_BLOCK, &grug_block_mask, 0);
-    game_fn_print_i32(7);
-    pthread_sigmask(SIG_UNBLOCK, &grug_block_mask, 0);
+    /* TODO:
+    I suspect the `while (true) {` eventually cause a SIGSEGV, because the pthread_sigmask() only blocks the SIGALRM in the current thread!!
+    "pthread_sigmask applies to the thread in which the call was executed", from https://stackoverflow.com/a/54871327/13279557
+
+    Is there maybe a way to loop over all active threads, to call SIG_BLOCK on them?
+    The main issue'd be that newly created threads would need it too :(
+
+    I should consider alternatives to SIGALRM, or maybe having an extra "grug" process take care of it
+
+    It would technically be possible to manually increment a "timer" counter at the end of every block scope, but it would introduce complexity
+    The upside is that if I combine this approach with replacing the SIGFPE handler with an explicit division by 0 jmp,
+    and the SIGSEGV handler with an explicit recursion depth counter, I could get rid of all the signal handling stuff from the generated "safe" code
+    This should also make the "safe" version run significantly faster, as all the signal blocking and unblocking would be gotten rid of
+
+    If I could find a way to run a piece of code before the JVM creates any threads, I could block SIGALRM by default,
+    though this same issue might crop up later in other engines later, and those engines might make it impossible to block SIGALRM at the very start of its main()
+    https://stackoverflow.com/a/20155073/13279557
+    */ 
+    while (true) {
+    // for (int i = 0; i < 1000; i++) {
+        // Only blocks SIGALRM
+        pthread_sigmask(SIG_BLOCK, &grug_block_mask, 0);
+        game_fn_print_i32(7);
+        pthread_sigmask(SIG_UNBLOCK, &grug_block_mask, 0);
+    }
 
     grug_disable_on_fn_runtime_error_handling();
 
@@ -943,9 +964,10 @@ static void dummy(void) {
     // ((struct {entity_name}_on_fns *)static_on_fns)->{on_fn_name}(static_globals_bytes);
 
     // TODO: Remove this!
-    while (true) {{
-        dummy();
-    }}
+    dummy();
+    // while (true) {{
+    //     dummy();
+    // }}
 
     // Restore rbp and rsp
     // __asm__ volatile("mov %0, %%rsp\\n\\t" : : "r" (real_rsp));
