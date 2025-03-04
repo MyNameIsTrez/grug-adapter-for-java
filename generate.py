@@ -431,7 +431,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
     output += "\n"
 
     for entity_name, entity in mod_api["entities"].items():
-        output += f'    jfieldID {entity_name}_definition_fid = (*env)->GetStaticFieldID(env, entity_definitions_class, "{snake_to_camel(entity_name)}", "L{package_slash}/Grug{snake_to_pascal(entity_name)};");\n'
+        output += f'    jfieldID {entity_name}_definition_fid = (*env)->GetStaticFieldID(env, entity_definitions_class, "{snake_to_camel(entity_name)}", "L{package_slash}/{snake_to_pascal(entity_name)}Definition;");\n'
         output += f"    CHECK(env);\n"
 
         output += "\n"
