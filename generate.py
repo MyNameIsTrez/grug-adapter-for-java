@@ -90,55 +90,10 @@ not_static jmethodID runtime_error_handler_id;
 
     output += "\n"
 
-    for name, entity in mod_api["entities"].items():
-        output += f"// TODO: Either mark this static or non_static:\n"
-        output += f"jobject {name}_definition_obj;\n"
-
-        for field in entity["fields"]:
-            output += f"// TODO: Either mark this static or non_static:\n"
-            output += f"jfieldID {name}_definition_{field["name"]}_fid;\n"
-
-        output += "\n"
-
     for name in mod_api["game_functions"].keys():
         output += f"not_static jmethodID game_fn_{name}_id;\n"
 
     output += "\n"
-
-    for entity_name, entity in mod_api["entities"].items():
-        output += f"void game_fn_define_{entity_name}("
-
-        for field_index, field in enumerate(entity["fields"]):
-            if field_index > 0:
-                output += ", "
-
-            output += f"{field["type"]} c_{field["name"]}"
-
-        output += f""") {{
-    JNIEnv *env;
-    FILL_ENV(env);
-
-"""
-
-        for field_index, field in enumerate(entity["fields"]):
-            field_name = field["name"]
-
-            if field_index > 0:
-                output += "\n"
-
-            if field["type"] == "string":
-                output += f"    jstring {field_name} = (*env)->NewStringUTF(env, c_{field_name});\n"
-                output += f"    CHECK(env);\n"
-                output += f"    (*env)->SetObjectField(env, {entity_name}_definition_obj, {entity_name}_definition_{field_name}_fid, {field_name});\n"
-            elif field["type"] == "i32":
-                output += f"    (*env)->SetIntField(env, {entity_name}_definition_obj, {entity_name}_definition_{field_name}_fid, c_{field_name});\n"
-            else:
-                # TODO: Support more types
-                assert False
-
-        output += "}\n"
-
-        output += "\n"
 
     for fn_name, fn in mod_api["game_functions"].items():
         output += fn["return_type"] if "return_type" in fn else "void"
@@ -368,13 +323,15 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillReloadData(JNI
     CHECK(env);
     (*env)->SetObjectField(env, file_object, entity_fid, entity);
 
+    jfieldID entity_type_fid = (*env)->GetFieldID(env, file_class, "entityType", "Ljava/lang/String;");
+    CHECK(env);
+    jstring entity_type = (*env)->NewStringUTF(env, c_file.entity_type);
+    CHECK(env);
+    (*env)->SetObjectField(env, file_object, entity_type_fid, entity_type);
+
     jfieldID dll_fid = (*env)->GetFieldID(env, file_class, "dll", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, dll_fid, (jlong)c_file.dll);
-
-    jfieldID define_fn_fid = (*env)->GetFieldID(env, file_class, "defineFn", "J");
-    CHECK(env);
-    (*env)->SetLongField(env, file_object, define_fn_fid, (jlong)c_file.define_fn);
 
     jfieldID globals_size_fid = (*env)->GetFieldID(env, file_class, "globalsSize", "I");
     CHECK(env);
@@ -383,12 +340,6 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillReloadData(JNI
     jfieldID init_globals_fn_fid = (*env)->GetFieldID(env, file_class, "initGlobalsFn", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, init_globals_fn_fid, (jlong)c_file.init_globals_fn);
-
-    jfieldID define_type_fid = (*env)->GetFieldID(env, file_class, "defineType", "Ljava/lang/String;");
-    CHECK(env);
-    jstring define_type = (*env)->NewStringUTF(env, c_file.define_type);
-    CHECK(env);
-    (*env)->SetObjectField(env, file_object, define_type_fid, define_type);
 
     jfieldID on_fns_fid = (*env)->GetFieldID(env, file_class, "onFns", "J");
     CHECK(env);
@@ -424,47 +375,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
     runtime_error_handler_id = (*env)->GetStaticMethodID(env, grug_class, "runtimeErrorHandler", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V");
     CHECK(env);
 
-    jclass entity_definitions_class = (*env)->FindClass(env, "{package_slash}/EntityDefinitions");
-    CHECK(env);
 """
-
-    output += "\n"
-
-    for entity_name, entity in mod_api["entities"].items():
-        output += f'    jfieldID {entity_name}_definition_fid = (*env)->GetStaticFieldID(env, entity_definitions_class, "{snake_to_camel(entity_name)}", "L{package_slash}/{snake_to_pascal(entity_name)}Definition;");\n'
-        output += f"    CHECK(env);\n"
-
-        output += "\n"
-
-        output += f"    {entity_name}_definition_obj = (*env)->GetStaticObjectField(env, entity_definitions_class, {entity_name}_definition_fid);\n"
-
-        output += "\n"
-
-        output += f"    {entity_name}_definition_obj = (*env)->NewGlobalRef(env, {entity_name}_definition_obj);\n"
-        output += f"    CHECK_NEW_GLOBAL_REF({entity_name}_definition_obj);\n"
-
-        output += "\n"
-
-        if len(entity["fields"]) > 0:
-            output += f"    jclass {entity_name}_definition_class = (*env)->GetObjectClass(env, {entity_name}_definition_obj);\n"
-
-            output += "\n"
-
-        for field in entity["fields"]:
-            field_name = field["name"]
-            field_type = field["type"]
-
-            output += f'    {entity_name}_definition_{field_name}_fid = (*env)->GetFieldID(env, {entity_name}_definition_class, "{snake_to_camel(field_name)}", "'
-
-            output += get_signature_type(field_type)
-
-            output += '");\n'
-
-            output += (
-                f"    CHECK(env);\n"
-            )
-
-            output += "\n"
 
     for fn_index, (fn_name, fn) in enumerate(mod_api["game_functions"].items()):
         if fn_index > 0:
@@ -559,13 +470,15 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillGrugFile(JNIEn
     CHECK(env);
     (*env)->SetObjectField(env, file_object, entity_fid, entity);
 
+    jfieldID entity_type_fid = (*env)->GetFieldID(env, file_class, "entityType", "Ljava/lang/String;");
+    CHECK(env);
+    jstring entity_type = (*env)->NewStringUTF(env, file.entity_type);
+    CHECK(env);
+    (*env)->SetObjectField(env, file_object, entity_type_fid, entity_type);
+
     jfieldID dll_fid = (*env)->GetFieldID(env, file_class, "dll", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, dll_fid, (jlong)file.dll);
-
-    jfieldID define_fn_fid = (*env)->GetFieldID(env, file_class, "defineFn", "J");
-    CHECK(env);
-    (*env)->SetLongField(env, file_object, define_fn_fid, (jlong)file.define_fn);
 
     jfieldID globals_size_fid = (*env)->GetFieldID(env, file_class, "globalsSize", "I");
     CHECK(env);
@@ -574,12 +487,6 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillGrugFile(JNIEn
     jfieldID init_globals_fn_fid = (*env)->GetFieldID(env, file_class, "initGlobalsFn", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, init_globals_fn_fid, (jlong)file.init_globals_fn);
-
-    jfieldID define_type_fid = (*env)->GetFieldID(env, file_class, "defineType", "Ljava/lang/String;");
-    CHECK(env);
-    jstring define_type = (*env)->NewStringUTF(env, file.define_type);
-    CHECK(env);
-    (*env)->SetObjectField(env, file_object, define_type_fid, define_type);
 
     jfieldID on_fns_fid = (*env)->GetFieldID(env, file_class, "onFns", "J");
     CHECK(env);
@@ -616,13 +523,15 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_getEntityFile(JNIE
     CHECK(env);
     (*env)->SetObjectField(env, file_object, entity_fid, entity);
 
+    jfieldID entity_type_fid = (*env)->GetFieldID(env, file_class, "entityType", "Ljava/lang/String;");
+    CHECK(env);
+    jstring entity_type = (*env)->NewStringUTF(env, file.entity_type);
+    CHECK(env);
+    (*env)->SetObjectField(env, file_object, entity_type_fid, entity_type);
+
     jfieldID dll_fid = (*env)->GetFieldID(env, file_class, "dll", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, dll_fid, (jlong)file.dll);
-
-    jfieldID define_fn_fid = (*env)->GetFieldID(env, file_class, "defineFn", "J");
-    CHECK(env);
-    (*env)->SetLongField(env, file_object, define_fn_fid, (jlong)file.define_fn);
 
     jfieldID globals_size_fid = (*env)->GetFieldID(env, file_class, "globalsSize", "I");
     CHECK(env);
@@ -632,12 +541,6 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_getEntityFile(JNIE
     CHECK(env);
     (*env)->SetLongField(env, file_object, init_globals_fn_fid, (jlong)file.init_globals_fn);
 
-    jfieldID define_type_fid = (*env)->GetFieldID(env, file_class, "defineType", "Ljava/lang/String;");
-    CHECK(env);
-    jstring define_type = (*env)->NewStringUTF(env, file.define_type);
-    CHECK(env);
-    (*env)->SetObjectField(env, file_object, define_type_fid, define_type);
-
     jfieldID on_fns_fid = (*env)->GetFieldID(env, file_class, "onFns", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, on_fns_fid, (jlong)file.on_fns);
@@ -645,13 +548,6 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_getEntityFile(JNIE
     jfieldID resource_mtimes_fid = (*env)->GetFieldID(env, file_class, "resourceMtimes", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)file.resource_mtimes);
-}}
-
-JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_callDefineFn(JNIEnv *env, jobject obj, jlong define_fn) {{
-    (void)env;
-    (void)obj;
-
-    ((grug_define_fn_t)define_fn)();
 }}
 
 JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_toggleOnFnsMode(JNIEnv *env, jobject obj) {{
