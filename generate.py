@@ -83,7 +83,7 @@ typedef uint64_t id;
 not_static jint jni_version;
 not_static JavaVM* jvm;
 
-not_static jclass grug_class;
+not_static jobject grug_object;
 
 not_static jmethodID runtime_error_handler_id;
 """
@@ -106,7 +106,11 @@ not_static jmethodID runtime_error_handler_id;
 
             output += f"{argument["type"]} "
 
-            if argument["type"] == "string" or argument["type"] == "i32" or argument["type"] == "id":
+            if (
+                argument["type"] == "string"
+                or argument["type"] == "i32"
+                or argument["type"] == "id"
+            ):
                 output += "c_"
             else:
                 # TODO: Support more types
@@ -127,15 +131,10 @@ not_static jmethodID runtime_error_handler_id;
                 output += "\n"
 
             if argument["type"] == "string":
-                output += f"    static jstring java_{argument_name};\n"
-                output += f"    java_{argument_name} = (*env)->NewStringUTF(env, c_{argument_name});\n"
+                output += f"    jstring java_{argument_name} = (*env)->NewStringUTF(env, c_{argument_name});\n"
                 output += f"    CHECK(env);\n"
-            elif argument["type"] == "i32":
-                output += f"    static jint static_{argument_name};\n"
-                output += f"    static_{argument_name} = c_{argument_name};\n"
-            elif argument["type"] == "id":
-                output += f"    static jlong static_{argument_name};\n"
-                output += f"    static_{argument_name} = c_{argument_name};\n"
+            elif argument["type"] == "i32" or argument["type"] == "id":
+                pass
             else:
                 # TODO: Support more types
                 assert False
@@ -154,7 +153,7 @@ not_static jmethodID runtime_error_handler_id;
 
             output += " result = "
 
-        output += "(*env)->CallStatic"
+        output += "(*env)->Call"
 
         if "return_type" not in fn:
             output += "Void"
@@ -166,7 +165,7 @@ not_static jmethodID runtime_error_handler_id;
             # TODO: Support more types
             assert False
 
-        output += f"Method(env, grug_class, game_fn_{fn_name}_id"
+        output += f"Method(env, grug_object, game_fn_{fn_name}_id"
 
         for argument_index, argument in enumerate(fn["arguments"]):
             output += ", "
@@ -174,7 +173,7 @@ not_static jmethodID runtime_error_handler_id;
             if argument["type"] == "string":
                 output += "java_"
             elif argument["type"] == "i32" or argument["type"] == "id":
-                output += "static_"
+                output += "c_"
             else:
                 # TODO: Support more types
                 assert False
@@ -206,7 +205,7 @@ not_static jmethodID runtime_error_handler_id;
     jstring java_on_fn_path = (*env)->NewStringUTF(env, c_on_fn_path);
     CHECK(env);
 
-    (*env)->CallStaticVoidMethod(env, grug_class, runtime_error_handler_id, java_reason, java_type, java_on_fn_name, java_on_fn_path);
+    (*env)->CallVoidMethod(env, grug_object, runtime_error_handler_id, java_reason, java_type, java_on_fn_name, java_on_fn_path);
     CHECK(env);
 }}
 
@@ -369,10 +368,12 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
         exit(EXIT_FAILURE);
     }}
 
-    grug_class = (*env)->NewGlobalRef(env, (*env)->GetObjectClass(env, obj));
-    CHECK_NEW_GLOBAL_REF(grug_class);
+    grug_object = (*env)->NewGlobalRef(env, obj);
+    CHECK_NEW_GLOBAL_REF(grug_object);
 
-    runtime_error_handler_id = (*env)->GetStaticMethodID(env, grug_class, "runtimeErrorHandler", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V");
+    jclass grug_class = (*env)->GetObjectClass(env, obj);
+
+    runtime_error_handler_id = (*env)->GetMethodID(env, grug_class, "runtimeErrorHandler", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V");
     CHECK(env);
 
 """
@@ -381,7 +382,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
         if fn_index > 0:
             output += "\n"
 
-        output += f'    game_fn_{fn_name}_id = (*env)->GetStaticMethodID(env, grug_class, "gameFn_{snake_to_camel(fn_name)}", "('
+        output += f'    game_fn_{fn_name}_id = (*env)->GetMethodID(env, grug_class, "gameFn_{snake_to_camel(fn_name)}", "('
 
         for argument in fn["arguments"]:
             output += get_signature_type(argument["type"])
