@@ -19,6 +19,7 @@ def get_output(mod_api, package_slash, grug_class):
 
 typedef char* string;
 typedef int32_t i32;
+typedef float f32;
 typedef uint64_t id;
 
 #ifdef DONT_CHECK_EXCEPTIONS
@@ -111,6 +112,7 @@ not_static jmethodID runtime_error_handler_id;
             if (
                 argument["type"] == "string"
                 or argument["type"] == "i32"
+                or argument["type"] == "f32"
                 or argument["type"] == "id"
             ):
                 output += "c_"
@@ -134,7 +136,7 @@ not_static jmethodID runtime_error_handler_id;
             if argument["type"] == "string":
                 output += f"    jstring java_{argument_name} = (*env)->NewStringUTF(env, c_{argument_name});\n"
                 output += f"    CHECK(env);\n"
-            elif argument["type"] == "i32" or argument["type"] == "id":
+            elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id":
                 pass
             else:
                 # TODO: Support more types
@@ -146,6 +148,8 @@ not_static jmethodID runtime_error_handler_id;
         if "return_type" in fn:
             if fn["return_type"] == "i32":
                 output += "jint"
+            elif fn["return_type"] == "f32":
+                output += "jfloat"
             elif fn["return_type"] == "id":
                 output += "jlong"
             else:
@@ -160,6 +164,8 @@ not_static jmethodID runtime_error_handler_id;
             output += "Void"
         elif fn["return_type"] == "i32":
             output += "Int"
+        elif fn["return_type"] == "f32":
+            output += "Float"
         elif fn["return_type"] == "id":
             output += "Long"
         else:
@@ -173,7 +179,7 @@ not_static jmethodID runtime_error_handler_id;
 
             if argument["type"] == "string":
                 output += "java_"
-            elif argument["type"] == "i32" or argument["type"] == "id":
+            elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id":
                 output += "c_"
             else:
                 # TODO: Support more types
@@ -615,6 +621,8 @@ def snake_to_pascal(s):
 def get_signature_type(typ):
     if typ == "i32":
         return "I"
+    elif typ == "f32":
+        return "F"
     elif typ == "id":
         return "J"
     elif typ == "string":
