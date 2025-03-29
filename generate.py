@@ -121,7 +121,6 @@ not_static jmethodID runtime_error_handler_id;
         output += f""") {{
     JNIEnv *env;
     FILL_ENV(env);
-
 """
 
         for argument_index, argument in enumerate(fn["arguments"]):
