@@ -235,16 +235,16 @@ JNIEXPORT jstring JNICALL Java_{package_underscore}_{grug_class}_errorPath(JNIEn
     return (*env)->NewStringUTF(env, grug_error.path);
 }}
 
-JNIEXPORT jstring JNICALL Java_{package_underscore}_{grug_class}_onFnName(JNIEnv *env, jobject obj) {{
+JNIEXPORT jstring JNICALL Java_{package_underscore}_{grug_class}_fnName(JNIEnv *env, jobject obj) {{
     (void)obj;
 
-    return (*env)->NewStringUTF(env, grug_on_fn_name);
+    return (*env)->NewStringUTF(env, grug_fn_name);
 }}
 
-JNIEXPORT jstring JNICALL Java_{package_underscore}_{grug_class}_onFnPath(JNIEnv *env, jobject obj) {{
+JNIEXPORT jstring JNICALL Java_{package_underscore}_{grug_class}_fnPath(JNIEnv *env, jobject obj) {{
     (void)obj;
 
-    return (*env)->NewStringUTF(env, grug_on_fn_path);
+    return (*env)->NewStringUTF(env, grug_fn_path);
 }}
 
 JNIEXPORT jint JNICALL Java_{package_underscore}_{grug_class}_errorGrugCLineNumber(JNIEnv *env, jobject obj) {{
