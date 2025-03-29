@@ -85,6 +85,8 @@ not_static JavaVM* jvm;
 
 not_static jobject grug_object;
 
+not_static jclass game_functions_class;
+
 not_static jmethodID runtime_error_handler_id;
 """
 
@@ -152,7 +154,7 @@ not_static jmethodID runtime_error_handler_id;
 
             output += " result = "
 
-        output += "(*env)->Call"
+        output += "(*env)->CallStatic"
 
         if "return_type" not in fn:
             output += "Void"
@@ -164,7 +166,7 @@ not_static jmethodID runtime_error_handler_id;
             # TODO: Support more types
             assert False
 
-        output += f"Method(env, grug_object, game_fn_{fn_name}_id"
+        output += f"Method(env, game_functions_class, game_fn_{fn_name}_id"
 
         for argument_index, argument in enumerate(fn["arguments"]):
             output += ", "
@@ -375,13 +377,16 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
     runtime_error_handler_id = (*env)->GetMethodID(env, grug_class, "runtimeErrorHandler", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V");
     CHECK(env);
 
+    game_functions_class = (*env)->FindClass(env, "Lcom/example/examplemod/GameFunctions;");
+    CHECK(env);
+
 """
 
     for fn_index, (fn_name, fn) in enumerate(mod_api["game_functions"].items()):
         if fn_index > 0:
             output += "\n"
 
-        output += f'    game_fn_{fn_name}_id = (*env)->GetMethodID(env, grug_class, "gameFn_{snake_to_camel(fn_name)}", "('
+        output += f'    game_fn_{fn_name}_id = (*env)->GetStaticMethodID(env, game_functions_class, "{snake_to_camel(fn_name)}", "('
 
         for argument in fn["arguments"]:
             output += get_signature_type(argument["type"])
