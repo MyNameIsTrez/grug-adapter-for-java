@@ -204,6 +204,10 @@ not_static jmethodID runtime_error_handler_id;
             output += "\n"
             output += "    return "
             if fn["return_type"] == "string":
+                # TODO:
+                # Right now this leaks memory
+                # The tricky part is figuring out a way to call ReleaseStringUTFChars(),
+                # or strdup() + free(), correctly so that the string can be used in global and local grug scope
                 output += "(*env)->GetStringUTFChars(env, result, NULL)"
             else:
                 output += "result"
