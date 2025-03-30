@@ -99,9 +99,14 @@ not_static jmethodID runtime_error_handler_id;
     output += "\n"
 
     for fn_name, fn in mod_api["game_functions"].items():
-        output += fn["return_type"] if "return_type" in fn else "void"
+        if "return_type" not in fn:
+            output += "void "
+        elif fn["return_type"] == "string":
+            output += "const char *"
+        else:
+            output += fn["return_type"] + " "
 
-        output += f" game_fn_{fn_name}("
+        output += f"game_fn_{fn_name}("
 
         for argument_index, argument in enumerate(fn["arguments"]):
             if argument_index > 0:
@@ -146,7 +151,9 @@ not_static jmethodID runtime_error_handler_id;
         output += "    "
 
         if "return_type" in fn:
-            if fn["return_type"] == "i32":
+            if fn["return_type"] == "string":
+                output += "jstring"
+            elif fn["return_type"] == "i32":
                 output += "jint"
             elif fn["return_type"] == "f32":
                 output += "jfloat"
@@ -162,6 +169,8 @@ not_static jmethodID runtime_error_handler_id;
 
         if "return_type" not in fn:
             output += "Void"
+        elif fn["return_type"] == "string":
+            output += "Object"
         elif fn["return_type"] == "i32":
             output += "Int"
         elif fn["return_type"] == "f32":
@@ -193,7 +202,12 @@ not_static jmethodID runtime_error_handler_id;
 
         if "return_type" in fn:
             output += "\n"
-            output += "    return result;\n"
+            output += "    return "
+            if fn["return_type"] == "string":
+                output += "(*env)->GetStringUTFChars(env, result, NULL)"
+            else:
+                output += "result"
+            output += ";\n"
 
         output += "}\n"
 
