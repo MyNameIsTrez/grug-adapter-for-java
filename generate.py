@@ -108,44 +108,46 @@ not_static jmethodID runtime_error_handler_id;
 
         output += f"game_fn_{fn_name}("
 
-        for argument_index, argument in enumerate(fn["arguments"]):
-            if argument_index > 0:
-                output += ", "
+        if "arguments" in fn:
+            for argument_index, argument in enumerate(fn["arguments"]):
+                if argument_index > 0:
+                    output += ", "
 
-            output += f"{argument["type"]} "
+                output += f"{argument["type"]} "
 
-            if (
-                argument["type"] == "string"
-                or argument["type"] == "i32"
-                or argument["type"] == "f32"
-                or argument["type"] == "id"
-            ):
-                output += "c_"
-            else:
-                # TODO: Support more types
-                assert False
+                if (
+                    argument["type"] == "string"
+                    or argument["type"] == "i32"
+                    or argument["type"] == "f32"
+                    or argument["type"] == "id"
+                ):
+                    output += "c_"
+                else:
+                    # TODO: Support more types
+                    assert False
 
-            output += f"{argument["name"]}"
+                output += f"{argument["name"]}"
 
         output += f""") {{
     JNIEnv *env;
     FILL_ENV(env);
 """
 
-        for argument_index, argument in enumerate(fn["arguments"]):
-            argument_name = argument["name"]
+        if "arguments" in fn:
+            for argument_index, argument in enumerate(fn["arguments"]):
+                argument_name = argument["name"]
 
-            if argument_index > 0:
-                output += "\n"
+                if argument_index > 0:
+                    output += "\n"
 
-            if argument["type"] == "string":
-                output += f"    jstring java_{argument_name} = (*env)->NewStringUTF(env, c_{argument_name});\n"
-                output += f"    CHECK(env);\n"
-            elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id":
-                pass
-            else:
-                # TODO: Support more types
-                assert False
+                if argument["type"] == "string":
+                    output += f"    jstring java_{argument_name} = (*env)->NewStringUTF(env, c_{argument_name});\n"
+                    output += f"    CHECK(env);\n"
+                elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id":
+                    pass
+                else:
+                    # TODO: Support more types
+                    assert False
 
         output += "\n"
         output += "    "
@@ -183,18 +185,19 @@ not_static jmethodID runtime_error_handler_id;
 
         output += f"Method(env, game_functions_class, game_fn_{fn_name}_id"
 
-        for argument_index, argument in enumerate(fn["arguments"]):
-            output += ", "
+        if "arguments" in fn:
+            for argument_index, argument in enumerate(fn["arguments"]):
+                output += ", "
 
-            if argument["type"] == "string":
-                output += "java_"
-            elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id":
-                output += "c_"
-            else:
-                # TODO: Support more types
-                assert False
+                if argument["type"] == "string":
+                    output += "java_"
+                elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id":
+                    output += "c_"
+                else:
+                    # TODO: Support more types
+                    assert False
 
-            output += argument["name"]
+                output += argument["name"]
 
         output += ");\n"
 
@@ -412,8 +415,9 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
 
         output += f'    game_fn_{fn_name}_id = (*env)->GetStaticMethodID(env, game_functions_class, "{snake_to_camel(fn_name)}", "('
 
-        for argument in fn["arguments"]:
-            output += get_signature_type(argument["type"])
+        if "arguments" in fn:
+            for argument in fn["arguments"]:
+                output += get_signature_type(argument["type"])
 
         output += ")"
 
