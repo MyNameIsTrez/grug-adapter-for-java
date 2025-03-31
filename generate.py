@@ -413,7 +413,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
         if fn_index > 0:
             output += "\n"
 
-        output += f'    game_fn_{fn_name}_id = (*env)->GetStaticMethodID(env, game_functions_class, "{snake_to_camel(fn_name)}", "('
+        output += f'    game_fn_{fn_name}_id = (*env)->GetStaticMethodID(env, game_functions_class, "{fn_name}", "('
 
         if "arguments" in fn:
             for argument in fn["arguments"]:
@@ -605,14 +605,14 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_areOnFnsInSafe
             continue
 
         for on_fn_name, on_fn in entity["on_functions"].items():
-            output += f"""JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_{snake_to_camel(entity_name)}_1has_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jobject obj, jlong on_fns) {{
+            output += f"""JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_{entity_name.replace("_", "_1")}_1has_1{on_fn_name.replace("_", "_1")}(JNIEnv *env, jobject obj, jlong on_fns) {{
     (void)env;
     (void)obj;
 
     return ((struct {entity_name}_on_fns *)on_fns)->{on_fn_name} != NULL;
 }}
 
-JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{snake_to_camel(entity_name)}_1{snake_to_camel(on_fn_name)}(JNIEnv *env, jclass clazz, jlong on_fns, jbyteArray globals) {{
+JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{entity_name.replace("_", "_1")}_1{on_fn_name.replace("_", "_1")}(JNIEnv *env, jclass clazz, jlong on_fns, jbyteArray globals) {{
     (void)clazz;
 
     jbyte *globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
@@ -625,17 +625,6 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{snake_to_camel(en
 """
 
     return output
-
-
-# Converts snake_case to camelCase
-# Source: https://stackoverflow.com/a/70999330/13279557
-def snake_to_camel(s):
-    return s[0] + s.title().replace("_", "")[1:]
-
-
-# Converts snake_case to PascalCase
-def snake_to_pascal(s):
-    return s.title().replace("_", "")
 
 
 # From the "Type Signatures" header here:
