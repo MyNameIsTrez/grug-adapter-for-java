@@ -161,6 +161,8 @@ not_static jmethodID runtime_error_handler_id;
                 output += "jfloat"
             elif fn["return_type"] == "id":
                 output += "jlong"
+            elif fn["return_type"] == "bool":
+                output += "jboolean"
             else:
                 # TODO: Support more types
                 assert False
@@ -179,6 +181,8 @@ not_static jmethodID runtime_error_handler_id;
             output += "Float"
         elif fn["return_type"] == "id":
             output += "Long"
+        elif fn["return_type"] == "bool":
+            output += "Boolean"
         else:
             # TODO: Support more types
             assert False
@@ -638,6 +642,8 @@ def get_signature_type(typ):
         return "J"
     elif typ == "string":
         return "Ljava/lang/String;"
+    elif typ == "bool":
+        return "Z"
 
     # TODO: Support more types
     assert False
