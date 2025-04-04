@@ -120,6 +120,7 @@ not_static jmethodID runtime_error_handler_id;
                     or argument["type"] == "i32"
                     or argument["type"] == "f32"
                     or argument["type"] == "id"
+                    or argument["type"] == "bool"
                 ):
                     output += "c_"
                 else:
@@ -143,7 +144,7 @@ not_static jmethodID runtime_error_handler_id;
                 if argument["type"] == "string":
                     output += f"    jstring java_{argument_name} = (*env)->NewStringUTF(env, c_{argument_name});\n"
                     output += f"    CHECK(env);\n"
-                elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id":
+                elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id" or argument["type"] == "bool":
                     pass
                 else:
                     # TODO: Support more types
@@ -195,7 +196,7 @@ not_static jmethodID runtime_error_handler_id;
 
                 if argument["type"] == "string":
                     output += "java_"
-                elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id":
+                elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id" or argument["type"] == "bool":
                     output += "c_"
                 else:
                     # TODO: Support more types
@@ -587,11 +588,18 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_getEntityFile(JNIE
     (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)file.resource_mtimes);
 }}
 
-JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_toggleOnFnsMode(JNIEnv *env, jobject obj) {{
+JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_setOnFnsToSafeMode(JNIEnv *env, jobject obj) {{
     (void)env;
     (void)obj;
 
-    grug_toggle_on_fns_mode();
+    grug_set_on_fns_to_safe_mode();
+}}
+
+JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_setOnFnsToFastMode(JNIEnv *env, jobject obj) {{
+    (void)env;
+    (void)obj;
+
+    grug_set_on_fns_to_fast_mode();
 }}
 
 JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_areOnFnsInSafeMode(JNIEnv *env, jobject obj) {{
@@ -599,6 +607,13 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_areOnFnsInSafe
     (void)obj;
 
     return grug_are_on_fns_in_safe_mode();
+}}
+
+JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_toggleOnFnsMode(JNIEnv *env, jobject obj) {{
+    (void)env;
+    (void)obj;
+
+    grug_toggle_on_fns_mode();
 }}
 """
 
