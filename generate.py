@@ -617,14 +617,13 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_toggleOnFnsMode(JN
 }}
 """
 
-    output += "\n"
-
     for entity_name, entity in mod_api["entities"].items():
         if "on_functions" not in entity:
             continue
 
         for on_fn_name, on_fn in entity["on_functions"].items():
-            output += f"""JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_{entity_name.replace("_", "_1")}_1has_1{on_fn_name.replace("_", "_1")}(JNIEnv *env, jobject obj, jlong on_fns) {{
+            output += f"""
+JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_{entity_name.replace("_", "_1")}_1has_1{on_fn_name.replace("_", "_1")}(JNIEnv *env, jobject obj, jlong on_fns) {{
     (void)env;
     (void)obj;
 
