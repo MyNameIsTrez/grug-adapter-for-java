@@ -73,8 +73,9 @@ typedef uint64_t id;
         for on_fn_name, on_fn in entity["on_functions"].items():
             output += f"    void (*{on_fn_name})(void *globals"
 
-            # TODO: Allow passing arguments
-            assert "arguments" not in on_fn
+            if "arguments" in on_fn:
+                for argument in on_fn["arguments"]:
+                    output += f", {argument['type']} {argument['name']}"
 
             output += ");\n"
 
@@ -630,13 +631,35 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_{entity_name.r
     return ((struct {entity_name}_on_fns *)on_fns)->{on_fn_name} != NULL;
 }}
 
-JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{entity_name.replace("_", "_1")}_1{on_fn_name.replace("_", "_1")}(JNIEnv *env, jclass clazz, jlong on_fns, jbyteArray globals) {{
+JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{entity_name.replace("_", "_1")}_1{on_fn_name.replace("_", "_1")}(JNIEnv *env, jclass clazz, jlong on_fns, jbyteArray globals"""
+
+            if "arguments" in on_fn:
+                for argument in on_fn["arguments"]:
+                    output += ", "
+
+                    if argument["type"] == "id":
+                        output += "jlong"
+                    elif argument["type"] == "bool":
+                        output += "jboolean"
+                    else:
+                        # TODO: Support more types
+                        assert False
+
+                    output += f" {argument['name']}"
+
+            output += f""") {{
     (void)clazz;
 
     jbyte *globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
     CHECK(env);
 
-    ((struct {entity_name}_on_fns *)on_fns)->{on_fn_name}(globals_bytes);
+    ((struct {entity_name}_on_fns *)on_fns)->{on_fn_name}(globals_bytes"""
+
+            if "arguments" in on_fn:
+                for argument in on_fn["arguments"]:
+                    output += f", {argument['name']}"
+
+            output += f""");
 
     (*env)->ReleaseByteArrayElements(env, globals, globals_bytes, 0);
 }}
