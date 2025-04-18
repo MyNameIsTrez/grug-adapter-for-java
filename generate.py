@@ -288,7 +288,7 @@ JNIEXPORT jint JNICALL Java_{package_underscore}_{grug_class}_errorGrugCLineNumb
     return grug_error.grug_c_line_number;
 }}
 
-JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_grugInit(JNIEnv *env, jobject obj, jstring java_mod_api_json_path, jstring java_mods_dir_path) {{
+JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_grugInit(JNIEnv *env, jobject obj, jstring java_mod_api_json_path, jstring java_mods_dir_path, jlong on_fn_time_limit_ms) {{
     (void)obj;
 
     const char *c_mod_api_json_path = (*env)->GetStringUTFChars(env, java_mod_api_json_path, NULL);
@@ -297,7 +297,7 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_grugInit(JNIEn
     const char *c_mods_dir_path = (*env)->GetStringUTFChars(env, java_mods_dir_path, NULL);
     CHECK(env);
 
-    bool result = grug_init(runtime_error_handler, (char *)c_mod_api_json_path, (char *)c_mods_dir_path);
+    bool result = grug_init(runtime_error_handler, (char *)c_mod_api_json_path, (char *)c_mods_dir_path, on_fn_time_limit_ms);
 
     (*env)->ReleaseStringUTFChars(env, java_mod_api_json_path, c_mod_api_json_path);
     (*env)->ReleaseStringUTFChars(env, java_mods_dir_path, c_mods_dir_path);
