@@ -589,11 +589,16 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_getEntityFile(JNIE
     (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)file.resource_mtimes);
 }}
 
-JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_gameFunctionErrorHappened(JNIEnv *env, jobject obj) {{
+JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_gameFunctionErrorHappened(JNIEnv *env, jobject obj, jstring java_message) {{
     (void)env;
     (void)obj;
 
-    grug_game_function_error_happened();
+    const char *c_message = (*env)->GetStringUTFChars(env, java_message, NULL);
+    CHECK(env);
+
+    grug_game_function_error_happened((char *)c_message);
+
+    (*env)->ReleaseStringUTFChars(env, java_message, c_message);
 }}
 
 JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_setOnFnsToSafeMode(JNIEnv *env, jobject obj) {{
