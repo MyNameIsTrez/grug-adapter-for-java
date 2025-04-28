@@ -653,7 +653,7 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_{entity_name.r
     return ((struct {entity_name}_on_fns *)on_fns)->{on_fn_name} != NULL;
 }}
 
-JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{entity_name.replace("_", "_1")}_1{on_fn_name.replace("_", "_1")}(JNIEnv *env, jclass clazz, jlong on_fns, jbyteArray globals"""
+JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{entity_name.replace("_", "_1")}_1{on_fn_name.replace("_", "_1")}(JNIEnv *env, jobject obj, jlong on_fns, jbyteArray globals"""
 
             if "arguments" in on_fn:
                 for argument in on_fn["arguments"]:
@@ -670,7 +670,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_{entity_name.repla
                     output += f" {argument['name']}"
 
             output += f""") {{
-    (void)clazz;
+    (void)obj;
 
     jbyte *globals_bytes = (*env)->GetByteArrayElements(env, globals, NULL);
     CHECK(env);
