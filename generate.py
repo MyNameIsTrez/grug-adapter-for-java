@@ -423,6 +423,9 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
     game_functions_class = (*env)->FindClass(env, "{package_slash}/GameFunctions");
     CHECK(env);
 
+    game_functions_class = (*env)->NewGlobalRef(env, game_functions_class);
+    CHECK_NEW_GLOBAL_REF(game_functions_class);
+
 """
 
     for fn_index, (fn_name, fn) in enumerate(mod_api["game_functions"].items()):
