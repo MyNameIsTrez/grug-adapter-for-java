@@ -145,7 +145,12 @@ not_static jmethodID runtime_error_handler_id;
                 if argument["type"] == "string":
                     output += f"    jstring java_{argument_name} = (*env)->NewStringUTF(env, c_{argument_name});\n"
                     output += f"    CHECK(env);\n"
-                elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id" or argument["type"] == "bool":
+                elif (
+                    argument["type"] == "i32"
+                    or argument["type"] == "f32"
+                    or argument["type"] == "id"
+                    or argument["type"] == "bool"
+                ):
                     pass
                 else:
                     # TODO: Support more types
@@ -197,7 +202,12 @@ not_static jmethodID runtime_error_handler_id;
 
                 if argument["type"] == "string":
                     output += "java_"
-                elif argument["type"] == "i32" or argument["type"] == "f32" or argument["type"] == "id" or argument["type"] == "bool":
+                elif (
+                    argument["type"] == "i32"
+                    or argument["type"] == "f32"
+                    or argument["type"] == "id"
+                    or argument["type"] == "bool"
+                ):
                     output += "c_"
                 else:
                     # TODO: Support more types
@@ -410,7 +420,7 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_initGrugAdapter(JN
     runtime_error_handler_id = (*env)->GetMethodID(env, grug_class, "runtimeErrorHandler", "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;)V");
     CHECK(env);
 
-    game_functions_class = (*env)->FindClass(env, "Lcom/example/examplemod/GameFunctions;");
+    game_functions_class = (*env)->FindClass(env, "{package_slash}/GameFunctions");
     CHECK(env);
 
 """
