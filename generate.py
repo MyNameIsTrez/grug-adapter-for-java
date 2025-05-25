@@ -298,7 +298,7 @@ JNIEXPORT jint JNICALL Java_{package_underscore}_{grug_class}_errorGrugCLineNumb
     return grug_error.grug_c_line_number;
 }}
 
-JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_grugInit(JNIEnv *env, jobject obj, jstring java_mod_api_json_path, jstring java_mods_dir_path, jlong on_fn_time_limit_ms) {{
+JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_grugInit(JNIEnv *env, jobject obj, jstring java_mod_api_json_path, jstring java_mods_dir_path, jstring java_dll_dir_path, jlong on_fn_time_limit_ms) {{
     (void)obj;
 
     const char *c_mod_api_json_path = (*env)->GetStringUTFChars(env, java_mod_api_json_path, NULL);
@@ -307,10 +307,14 @@ JNIEXPORT jboolean JNICALL Java_{package_underscore}_{grug_class}_grugInit(JNIEn
     const char *c_mods_dir_path = (*env)->GetStringUTFChars(env, java_mods_dir_path, NULL);
     CHECK(env);
 
-    bool result = grug_init(runtime_error_handler, (char *)c_mod_api_json_path, (char *)c_mods_dir_path, on_fn_time_limit_ms);
+    const char *c_dll_dir_path = (*env)->GetStringUTFChars(env, java_dll_dir_path, NULL);
+    CHECK(env);
+
+    bool result = grug_init(runtime_error_handler, (char *)c_mod_api_json_path, (char *)c_mods_dir_path, (char *)c_dll_dir_path, on_fn_time_limit_ms);
 
     (*env)->ReleaseStringUTFChars(env, java_mod_api_json_path, c_mod_api_json_path);
     (*env)->ReleaseStringUTFChars(env, java_mods_dir_path, c_mods_dir_path);
+    (*env)->ReleaseStringUTFChars(env, java_dll_dir_path, c_dll_dir_path);
 
     return result;
 }}
@@ -387,10 +391,6 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillReloadData(JNI
     jfieldID on_fns_fid = (*env)->GetFieldID(env, file_class, "onFns", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, on_fns_fid, (jlong)c_file.on_fns);
-
-    jfieldID resource_mtimes_fid = (*env)->GetFieldID(env, file_class, "resourceMtimes", "J");
-    CHECK(env);
-    (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)c_file.resource_mtimes);
 }}
 
 JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_callInitGlobals(JNIEnv *env, jobject obj, jlong init_globals_fn, jbyteArray globals, jlong entity_id) {{
@@ -543,10 +543,6 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_fillGrugFile(JNIEn
     jfieldID on_fns_fid = (*env)->GetFieldID(env, file_class, "onFns", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, on_fns_fid, (jlong)file.on_fns);
-
-    jfieldID resource_mtimes_fid = (*env)->GetFieldID(env, file_class, "resourceMtimes", "J");
-    CHECK(env);
-    (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)file.resource_mtimes);
 }}
 
 JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_getEntityFile(JNIEnv *env, jobject obj, jstring java_entity, jobject file_object) {{
@@ -596,10 +592,6 @@ JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_getEntityFile(JNIE
     jfieldID on_fns_fid = (*env)->GetFieldID(env, file_class, "onFns", "J");
     CHECK(env);
     (*env)->SetLongField(env, file_object, on_fns_fid, (jlong)file.on_fns);
-
-    jfieldID resource_mtimes_fid = (*env)->GetFieldID(env, file_class, "resourceMtimes", "J");
-    CHECK(env);
-    (*env)->SetLongField(env, file_object, resource_mtimes_fid, (jlong)file.resource_mtimes);
 }}
 
 JNIEXPORT void JNICALL Java_{package_underscore}_{grug_class}_gameFunctionErrorHappened(JNIEnv *env, jobject obj, jstring java_message) {{
